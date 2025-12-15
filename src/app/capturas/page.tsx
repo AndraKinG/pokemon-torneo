@@ -47,8 +47,9 @@ function mod(n: number, m: number) {
 }
 
 export default function CapturasPorJugadorPage() {
-if (!supabase) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
-if (!supabase) return null;
+  const sb = supabase;
+  if (!sb) return null; // evita error en build/SSR y TypeScript "possibly null"
+
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [msg, setMsg] = useState("");
@@ -75,8 +76,8 @@ if (!supabase) return null;
   async function load() {
     setMsg("");
 
-    const p = await supabase.from("profiles").select("id, display_name");
-    const c = await supabase.from("captures").select("*").order("captured_at", { ascending: false });
+    const p = await sb.from("profiles").select("id, display_name");
+    const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
 
     if (p.error) return setMsg(p.error.message);
     if (c.error) return setMsg(c.error.message);
@@ -87,6 +88,7 @@ if (!supabase) return null;
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const users = useMemo(() => {
@@ -153,15 +155,7 @@ if (!supabase) return null;
   return (
     <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", padding: "0 16px" }}>
       {/* Header responsive */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 240 }}>
           <h1 style={{ marginBottom: 6 }}>Capturas</h1>
           <p style={{ marginTop: 0, maxWidth: 560 }}>
@@ -187,11 +181,7 @@ if (!supabase) return null;
       ) : (
         <>
           {/* Slider infinito (Desktop=3, Mobile=1) */}
-          <div
-            onTouchStart={onTouchStart}
-            onTouchEnd={onTouchEnd}
-            style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}
-          >
+          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}>
             <div
               style={{
                 display: "flex",
@@ -206,36 +196,12 @@ if (!supabase) return null;
             >
               {isDesktop ? (
                 <>
-                  <UserCard
-                    user={users[leftIndex]}
-                    count={countByUser.get(users[leftIndex].id) ?? 0}
-                    variant="side"
-                    onClick={prev}
-                    isDesktop={isDesktop}
-                  />
-                  <UserCard
-                    user={users[centerIndex]}
-                    count={countByUser.get(users[centerIndex].id) ?? 0}
-                    variant="center"
-                    onClick={() => {}}
-                    isDesktop={isDesktop}
-                  />
-                  <UserCard
-                    user={users[rightIndex]}
-                    count={countByUser.get(users[rightIndex].id) ?? 0}
-                    variant="side"
-                    onClick={next}
-                    isDesktop={isDesktop}
-                  />
+                  <UserCard user={users[leftIndex]} count={countByUser.get(users[leftIndex].id) ?? 0} variant="side" onClick={prev} isDesktop={isDesktop} />
+                  <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
+                  <UserCard user={users[rightIndex]} count={countByUser.get(users[rightIndex].id) ?? 0} variant="side" onClick={next} isDesktop={isDesktop} />
                 </>
               ) : (
-                <UserCard
-                  user={users[centerIndex]}
-                  count={countByUser.get(users[centerIndex].id) ?? 0}
-                  variant="center"
-                  onClick={() => {}}
-                  isDesktop={isDesktop}
-                />
+                <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
               )}
             </div>
 
@@ -282,10 +248,7 @@ if (!supabase) return null;
               <button style={pillStyle(statusFilter === "muerto")} onClick={() => setStatusFilter("muerto")}>
                 Muerto
               </button>
-              <button
-                style={pillStyle(statusFilter === "no_capturado")}
-                onClick={() => setStatusFilter("no_capturado")}
-              >
+              <button style={pillStyle(statusFilter === "no_capturado")} onClick={() => setStatusFilter("no_capturado")}>
                 No capturado
               </button>
             </div>
