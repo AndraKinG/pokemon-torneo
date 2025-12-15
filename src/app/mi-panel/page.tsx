@@ -80,7 +80,7 @@ export default function MiPanelPage() {
   // ✅ RUN (juego/región activa)
   const [activeGameId, setActiveGameId] = useState<number | null>(null);
   const [games, setGames] = useState<{ id: number; name: string }[]>([]);
-  const [routes, setRoutes] = useState<{ id: number; game_id: number; name: string }[]>([]);
+  const [routes, setRoutes] = useState<{ id: number; game_id: number; name: string; name_es?: string | null }[]>([]);
 
   // ✅ Responsive detection
   const [isDesktop, setIsDesktop] = useState(false);
