@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 type Profile = {
   id: string;
@@ -59,16 +59,7 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 }
 
 export default function HistoriaPage() {
-  // ✅ Cliente SOLO en browser
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [progress, setProgress] = useState<ProgressRow[]>([]);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Slot = {
@@ -36,16 +36,7 @@ function mod(n: number, m: number) {
 }
 
 export default function EquiposPage() {
-  // ✅ Cliente SOLO en browser
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [slots, setSlots] = useState<Slot[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Profile = { id: string; display_name: string };
@@ -47,17 +47,7 @@ function mod(n: number, m: number) {
 }
 
 export default function CapturasPorJugadorPage() {
-  // ✅ crear cliente SOLO en browser (y una vez)
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // ✅ antes de cualquier hook: salida segura
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [captures, setCaptures] = useState<Capture[]>([]);
@@ -83,18 +73,18 @@ export default function CapturasPorJugadorPage() {
   }, []);
 
   async function load() {
-    setMsg("");
+  setMsg("");
 
-    // ✅ sb ya NO es null aquí porque hemos hecho return arriba
-    const p = await sb.from("profiles").select("id, display_name");
-    const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
+  const p = await sb.from("profiles").select("id, display_name");
+  const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
 
-    if (p.error) return setMsg(p.error.message);
-    if (c.error) return setMsg(c.error.message);
+  if (p.error) return setMsg(p.error.message);
+  if (c.error) return setMsg(c.error.message);
 
-    setProfiles((p.data ?? []) as Profile[]);
-    setCaptures((c.data ?? []) as Capture[]);
-  }
+  setProfiles((p.data ?? []) as Profile[]);
+  setCaptures((c.data ?? []) as Capture[]);
+}
+
 
   useEffect(() => {
     load();

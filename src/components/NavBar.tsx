@@ -2,24 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export default function NavBar() {
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [uid, setUid] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   async function refreshOnce() {
-    if (!sb) return;
-
     setLoading(true);
     try {
       const { data, error } = await sb.auth.getSession();
@@ -37,7 +29,12 @@ export default function NavBar() {
         return;
       }
 
-      const { data: profile } = await sb.from("profiles").select("display_name").eq("id", userId).single();
+      const { data: profile } = await sb
+        .from("profiles")
+        .select("display_name")
+        .eq("id", userId)
+        .single();
+
       setName(profile?.display_name ?? "Mi cuenta");
     } finally {
       setLoading(false);
@@ -46,11 +43,9 @@ export default function NavBar() {
 
   useEffect(() => {
     refreshOnce();
-    if (!sb) return;
 
     const { data: sub } = sb.auth.onAuthStateChange(() => refreshOnce());
     return () => sub.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb]);
 
   return (
@@ -61,9 +56,7 @@ export default function NavBar() {
       <Link href="/reglas">Reglas</Link>
 
       <div style={{ marginLeft: "auto" }}>
-        {!sb ? (
-          <span>—</span>
-        ) : loading ? (
+        {loading ? (
           <span>…</span>
         ) : uid ? (
           <Link href="/mi-panel">
@@ -76,4 +69,3 @@ export default function NavBar() {
     </nav>
   );
 }
-

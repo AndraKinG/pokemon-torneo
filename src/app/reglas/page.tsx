@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 type RuleRow = {
   id: number;
@@ -15,15 +15,7 @@ type Profile = {
 };
 
 export default function ReglasPage() {
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");

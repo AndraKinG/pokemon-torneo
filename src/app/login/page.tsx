@@ -1,95 +1,79 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export default function LoginPage() {
-  // ✅ Cliente SOLO en browser
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [msg, setMsg] = useState("");
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  async function signUp() {
-    setMsg("...");
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErrMsg(null);
     setLoading(true);
 
-    const { error } = await sb.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: email.split("@")[0] } },
-    });
+    try {
+      console.log("LOGIN: antes signIn");
 
-    setLoading(false);
+      const res = await Promise.race([
+        sb.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout (10s): la request no respondió")), 10000)
+        ),
+      ]);
 
-    if (error) setMsg(error.message);
-    else setMsg("Cuenta creada. Ahora inicia sesión.");
-  }
+      console.log("LOGIN: después signIn", res);
 
-  async function signIn() {
-    setMsg("...");
-    setLoading(true);
+      if (res.error) {
+        setErrMsg(res.error.message);
+        return;
+      }
 
-    const { error } = await sb.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) setMsg(error.message);
-    else router.push("/mi-panel");
-  }
-
-  async function signOut() {
-    await sb.auth.signOut();
-    setMsg("Sesión cerrada.");
+      router.push("/mi-panel");
+      router.refresh();
+    } catch (err: any) {
+      console.error("LOGIN ERROR", err);
+      setErrMsg(err?.message ?? "Error desconocido");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div style={{ maxWidth: 360 }}>
+    <div style={{ maxWidth: 420 }}>
       <h1>Login</h1>
 
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
-      />
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          autoComplete="email"
+        />
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
-      />
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Contraseña"
+          type="password"
+          autoComplete="current-password"
+        />
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={signIn} disabled={loading}>
-          Entrar
+        <button type="submit" disabled={loading}>
+          {loading ? "Entrando..." : "Entrar"}
         </button>
-        <button onClick={signUp} disabled={loading}>
-          Registrarse
-        </button>
-        <button onClick={signOut} disabled={loading}>
-          Salir
-        </button>
-      </div>
 
-      <p>{msg}</p>
+        {errMsg && <p style={{ color: "crimson" }}>{errMsg}</p>}
+      </form>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type CaptureStatus = "vivo" | "muerto" | "no_capturado";
@@ -70,16 +70,7 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 }
 
 export default function MiPanelPage() {
-  // ✅ Cliente SOLO en browser
-  const sb = useMemo(() => {
-    try {
-      return getSupabaseBrowserClient();
-    } catch {
-      return null;
-    }
-  }, []);
-
-  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  const sb = useMemo(() => supabaseBrowser(), []);
 
   const [msg, setMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
