@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 type Profile = {
   id: string;
@@ -27,12 +27,6 @@ function clampBadges(n: any) {
   return Math.max(0, Math.min(8, Math.floor(x)));
 }
 
-/**
- * “Sprite” de medalla (SVG) con look tipo Pokémon.
- * - filled: conseguido
- * - empty: hueco (gris)
- * Luego si quieres, lo cambiamos por PNGs reales en /public/badges/.
- */
 function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
   const label = `Medalla ${index + 1}`;
   const opacity = filled ? 1 : 0.22;
@@ -54,9 +48,7 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
       }}
     >
       <svg width="22" height="22" viewBox="0 0 24 24" style={{ opacity }} role="img">
-        {/* aro */}
         <circle cx="12" cy="12" r="9" fill="none" stroke={stroke} strokeWidth="2" />
-        {/* estrella */}
         <path
           d="M12 7.2l1.2 2.7 3 .3-2.25 1.9.7 2.9L12 13.5 9.35 15l.7-2.9L7.8 10.2l3-.3L12 7.2z"
           fill={filled ? "#111" : "#777"}
@@ -67,16 +59,21 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 }
 
 export default function HistoriaPage() {
+  // ✅ Cliente SOLO en browser
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
-  if (!supabase) {
-    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
-  }
-if (!supabase) return null;
+  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
   const [msg, setMsg] = useState("");
 
-  // ✅ Desktop detection (para medallas en 8 columnas vs 4 columnas)
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 900px)");
@@ -96,8 +93,8 @@ if (!supabase) return null;
   async function load() {
     setMsg("");
 
-    const p = await supabase.from("profiles").select("id, display_name");
-    const pr = await supabase.from("progress").select("user_id, badges, updated_at");
+    const p = await sb.from("profiles").select("id, display_name");
+    const pr = await sb.from("progress").select("user_id, badges, updated_at");
 
     if (p.error) return setMsg(p.error.message);
     if (pr.error) return setMsg(pr.error.message);
@@ -108,14 +105,13 @@ if (!supabase) return null;
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rows: Row[] = useMemo(() => {
-    // Map progreso por user_id
     const progByUser = new Map<string, ProgressRow>();
     for (const r of progress) progByUser.set(r.user_id, r);
 
-    // Base: todos los profiles (aunque no tengan progress aún)
     const out: Row[] = profiles.map((p) => {
       const pr = progByUser.get(p.id) ?? null;
       return {
@@ -126,7 +122,6 @@ if (!supabase) return null;
       };
     });
 
-    // Orden: badges DESC, desempate updated_at ASC (más antiguo primero), y si falta updated_at va al final
     out.sort((a, b) => {
       if (b.badges !== a.badges) return b.badges - a.badges;
 
@@ -135,7 +130,6 @@ if (!supabase) return null;
 
       if (ta !== tb) return ta - tb;
 
-      // último desempate estable por nombre
       return a.display_name.localeCompare(b.display_name);
     });
 
@@ -151,9 +145,7 @@ if (!supabase) return null;
       </p>
 
       {msg && (
-        <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 10, marginTop: 10 }}>
-          {msg}
-        </div>
+        <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 10, marginTop: 10 }}>{msg}</div>
       )}
 
       {rows.length === 0 ? (
@@ -161,11 +153,7 @@ if (!supabase) return null;
       ) : (
         <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
           {rows.map((r, idx) => {
-            const isTop1 = idx === 0;
-            const isTop2 = idx === 1;
-            const isTop3 = idx === 2;
-
-            const crown = isTop1 ? "👑" : isTop2 ? "🥈" : isTop3 ? "🥉" : "";
+            const crown = idx === 0 ? "👑" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "";
 
             return (
               <div
@@ -175,7 +163,7 @@ if (!supabase) return null;
                   borderRadius: 16,
                   padding: 14,
                   background: "white",
-                  boxShadow: isTop1 ? "0 14px 36px rgba(0,0,0,0.10)" : "none",
+                  boxShadow: idx === 0 ? "0 14px 36px rgba(0,0,0,0.10)" : "none",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
@@ -193,7 +181,6 @@ if (!supabase) return null;
                   </div>
                 </div>
 
-                {/* ✅ Medallas (8 slots) -> Desktop 8 en fila, móvil 4 + 4 */}
                 <div
                   style={{
                     marginTop: 10,

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Slot = {
@@ -9,7 +9,7 @@ type Slot = {
   user_id: string;
   slot: number;
   pokemon: string;
-  nickname?: string | null; // 👈 mote (si existe en la tabla)
+  nickname?: string | null;
 };
 
 type Profile = { id: string; display_name: string };
@@ -36,9 +36,16 @@ function mod(n: number, m: number) {
 }
 
 export default function EquiposPage() {
+  // ✅ Cliente SOLO en browser
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
-  if (!supabase) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
-  if (!supabase) return null;
+  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
 
   const [slots, setSlots] = useState<Slot[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -66,11 +73,8 @@ export default function EquiposPage() {
   async function load() {
     setMsg("");
 
-    const p = await supabase.from("profiles").select("id, display_name");
-
-    // 👇 Usamos "*" para que si existe nickname en team_slots lo traiga
-    // y si no existe, NO rompe (simplemente no vendrá y será undefined).
-    const t = await supabase.from("team_slots").select("*").order("slot");
+    const p = await sb.from("profiles").select("id, display_name");
+    const t = await sb.from("team_slots").select("*").order("slot");
 
     if (p.error) return setMsg(p.error.message);
     if (t.error) return setMsg(t.error.message);
@@ -81,6 +85,7 @@ export default function EquiposPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const nameById = useMemo(() => {
@@ -163,7 +168,6 @@ export default function EquiposPage() {
         <p>No hay jugadores aún.</p>
       ) : (
         <>
-          {/* Slider infinito (Desktop=3, Mobile=1) */}
           <div
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
@@ -294,7 +298,7 @@ function TrainerCard({
           width={66}
           height={66}
           style={{ imageRendering: "pixelated", flexShrink: 0 }}
-          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+          onError={(e) => (((e.currentTarget as HTMLImageElement).style.display = "none"), undefined)}
         />
         <div style={{ minWidth: 0 }}>
           <div
@@ -332,7 +336,6 @@ function TrainerCard({
                 minWidth: 0,
               }}
             >
-              {/* sprite */}
               {pokemonName ? (
                 <div style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
                   <PokemonSprite name={pokemonName} size={34} />
@@ -341,7 +344,6 @@ function TrainerCard({
                 <div style={{ width: 34, height: 34 }} />
               )}
 
-              {/* texto: SOLO mote */}
               <span
                 style={{
                   marginLeft: "auto",

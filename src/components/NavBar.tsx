@@ -1,22 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 export default function NavBar() {
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
-  if (!supabase) return null;
-  if (!supabase) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   const [uid, setUid] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   async function refreshOnce() {
-    setLoading(true);
+    if (!sb) return;
 
+    setLoading(true);
     try {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await sb.auth.getSession();
       if (error) {
         setUid(null);
         setName("");
@@ -31,12 +37,7 @@ export default function NavBar() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("display_name")
-        .eq("id", userId)
-        .single();
-
+      const { data: profile } = await sb.from("profiles").select("display_name").eq("id", userId).single();
       setName(profile?.display_name ?? "Mi cuenta");
     } finally {
       setLoading(false);
@@ -45,31 +46,24 @@ export default function NavBar() {
 
   useEffect(() => {
     refreshOnce();
+    if (!sb) return;
 
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      refreshOnce();
-    });
-
+    const { data: sub } = sb.auth.onAuthStateChange(() => refreshOnce());
     return () => sub.subscription.unsubscribe();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb]);
 
   return (
-    <nav
-      style={{
-        display: "flex",
-        gap: 16,
-        padding: 12,
-        borderBottom: "1px solid #ddd",
-        alignItems: "center",
-      }}
-    >
+    <nav style={{ display: "flex", gap: 16, padding: 12, borderBottom: "1px solid #ddd", alignItems: "center" }}>
       <Link href="/equipo">Equipos</Link>
       <Link href="/capturas">Capturas</Link>
       <Link href="/historia">Historia</Link>
       <Link href="/reglas">Reglas</Link>
 
       <div style={{ marginLeft: "auto" }}>
-        {loading ? (
+        {!sb ? (
+          <span>—</span>
+        ) : loading ? (
           <span>…</span>
         ) : uid ? (
           <Link href="/mi-panel">
@@ -82,3 +76,4 @@ export default function NavBar() {
     </nav>
   );
 }
+

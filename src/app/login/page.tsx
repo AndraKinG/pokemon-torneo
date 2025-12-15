@@ -1,14 +1,20 @@
 "use client";
-import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+
+import { useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  // ✅ Cliente SOLO en browser
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
-  if (!supabase) {
-    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
-  }
-if (!supabase) return null;
+  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,40 +23,38 @@ if (!supabase) return null;
   const [loading, setLoading] = useState(false);
 
   async function signUp() {
-  setMsg("...");
-  setLoading(true);
+    setMsg("...");
+    setLoading(true);
 
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { display_name: email.split("@")[0] } },
-  });
+    const { error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: email.split("@")[0] } },
+    });
 
-  setLoading(false);
+    setLoading(false);
 
-  if (error) setMsg(error.message);
-  else setMsg("Cuenta creada. Ahora inicia sesión.");
-}
-
+    if (error) setMsg(error.message);
+    else setMsg("Cuenta creada. Ahora inicia sesión.");
+  }
 
   async function signIn() {
-  setMsg("...");
-  setLoading(true);
+    setMsg("...");
+    setLoading(true);
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+    const { error } = await sb.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  setLoading(false);
+    setLoading(false);
 
-  if (error) setMsg(error.message);
-  else router.push("/mi-panel");
-}
-
+    if (error) setMsg(error.message);
+    else router.push("/mi-panel");
+  }
 
   async function signOut() {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     setMsg("Sesión cerrada.");
   }
 
@@ -74,10 +78,15 @@ if (!supabase) return null;
       />
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={signIn} disabled={loading}>Entrar</button>
-<button onClick={signUp} disabled={loading}>Registrarse</button>
-<button onClick={signOut} disabled={loading}>Salir</button>
-
+        <button onClick={signIn} disabled={loading}>
+          Entrar
+        </button>
+        <button onClick={signUp} disabled={loading}>
+          Registrarse
+        </button>
+        <button onClick={signOut} disabled={loading}>
+          Salir
+        </button>
       </div>
 
       <p>{msg}</p>

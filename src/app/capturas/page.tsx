@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Profile = { id: string; display_name: string };
@@ -47,8 +47,17 @@ function mod(n: number, m: number) {
 }
 
 export default function CapturasPorJugadorPage() {
-  const sb = supabase;
-  if (!sb) return null; // evita error en build/SSR y TypeScript "possibly null"
+  // ✅ crear cliente SOLO en browser (y una vez)
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ✅ antes de cualquier hook: salida segura
+  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [captures, setCaptures] = useState<Capture[]>([]);
@@ -76,6 +85,7 @@ export default function CapturasPorJugadorPage() {
   async function load() {
     setMsg("");
 
+    // ✅ sb ya NO es null aquí porque hemos hecho return arriba
     const p = await sb.from("profiles").select("id, display_name");
     const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
 
@@ -125,7 +135,6 @@ export default function CapturasPorJugadorPage() {
     setActiveIndex((i) => i + 1);
   }
 
-  // swipe
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   function onTouchStart(e: React.TouchEvent) {
     setTouchStartX(e.touches[0]?.clientX ?? null);
@@ -154,8 +163,15 @@ export default function CapturasPorJugadorPage() {
 
   return (
     <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", padding: "0 16px" }}>
-      {/* Header responsive */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ minWidth: 240 }}>
           <h1 style={{ marginBottom: 6 }}>Capturas</h1>
           <p style={{ marginTop: 0, maxWidth: 560 }}>
@@ -180,8 +196,11 @@ export default function CapturasPorJugadorPage() {
         <p>No hay jugadores aún.</p>
       ) : (
         <>
-          {/* Slider infinito (Desktop=3, Mobile=1) */}
-          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}>
+          <div
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}
+          >
             <div
               style={{
                 display: "flex",
@@ -190,18 +209,42 @@ export default function CapturasPorJugadorPage() {
                 gap: 18,
                 width: "100%",
                 maxWidth: isDesktop ? 980 : 560,
-                padding: isDesktop ? "8px 0 14px" : "8px 0 14px",
+                padding: "8px 0 14px",
                 boxSizing: "border-box",
               }}
             >
               {isDesktop ? (
                 <>
-                  <UserCard user={users[leftIndex]} count={countByUser.get(users[leftIndex].id) ?? 0} variant="side" onClick={prev} isDesktop={isDesktop} />
-                  <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
-                  <UserCard user={users[rightIndex]} count={countByUser.get(users[rightIndex].id) ?? 0} variant="side" onClick={next} isDesktop={isDesktop} />
+                  <UserCard
+                    user={users[leftIndex]}
+                    count={countByUser.get(users[leftIndex].id) ?? 0}
+                    variant="side"
+                    onClick={prev}
+                    isDesktop={isDesktop}
+                  />
+                  <UserCard
+                    user={users[centerIndex]}
+                    count={countByUser.get(users[centerIndex].id) ?? 0}
+                    variant="center"
+                    onClick={() => {}}
+                    isDesktop={isDesktop}
+                  />
+                  <UserCard
+                    user={users[rightIndex]}
+                    count={countByUser.get(users[rightIndex].id) ?? 0}
+                    variant="side"
+                    onClick={next}
+                    isDesktop={isDesktop}
+                  />
                 </>
               ) : (
-                <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
+                <UserCard
+                  user={users[centerIndex]}
+                  count={countByUser.get(users[centerIndex].id) ?? 0}
+                  variant="center"
+                  onClick={() => {}}
+                  isDesktop={isDesktop}
+                />
               )}
             </div>
 
@@ -221,7 +264,6 @@ export default function CapturasPorJugadorPage() {
             </div>
           </div>
 
-          {/* Header + filtro */}
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h2 style={{ margin: 0 }}>{activeUserName}</h2>
@@ -230,7 +272,6 @@ export default function CapturasPorJugadorPage() {
               <span style={{ color: "#666" }}>{capturesOfActiveUser.length} total</span>
             </div>
 
-            {/* filtros bonitos en móvil */}
             <div
               style={{
                 display: "grid",
@@ -254,7 +295,6 @@ export default function CapturasPorJugadorPage() {
             </div>
           </div>
 
-          {/* Lista */}
           <div
             style={{
               marginTop: 12,
@@ -287,29 +327,11 @@ export default function CapturasPorJugadorPage() {
                   >
                     <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
                       <PokemonSprite name={c.pokemon} size={44} />
-
                       <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            fontSize: 18,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
+                        <div style={{ fontWeight: 900, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {c.nickname?.trim() ? c.nickname : "—"}
                         </div>
-
-                        <div
-                          style={{
-                            color: "#666",
-                            fontSize: 13,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
+                        <div style={{ color: "#666", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {c.route || "sin ruta"}
                         </div>
                       </div>

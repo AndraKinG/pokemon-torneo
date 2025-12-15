@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 type RuleRow = {
   id: number;
@@ -15,11 +15,15 @@ type Profile = {
 };
 
 export default function ReglasPage() {
+  const sb = useMemo(() => {
+    try {
+      return getSupabaseBrowserClient();
+    } catch {
+      return null;
+    }
+  }, []);
 
-  if (!supabase) {
-    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
-  }
-if (!supabase) return null;
+  if (!sb) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
 
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
@@ -31,7 +35,7 @@ if (!supabase) return null;
     setMsg("");
 
     // 1) reglas
-    const r = await supabase.from("rules").select("*").eq("id", 1).single();
+    const r = await sb.from("rules").select("*").eq("id", 1).single();
     if (r.error) return setMsg(r.error.message);
 
     const row = r.data as RuleRow;
@@ -39,19 +43,16 @@ if (!supabase) return null;
     setSavedContent(row.content ?? "");
 
     // 2) ver si soy admin
-    const { data: auth } = await supabase.auth.getUser();
+    const { data: auth } = await sb.auth.getUser();
     const uid = auth.user?.id;
+
     if (!uid) {
       setIsAdmin(false);
       setEditing(false);
       return;
     }
 
-    const p = await supabase
-      .from("profiles")
-      .select("role, display_name")
-      .eq("id", uid)
-      .single();
+    const p = await sb.from("profiles").select("role, display_name").eq("id", uid).single();
 
     if (p.error) {
       setIsAdmin(false);
@@ -65,14 +66,15 @@ if (!supabase) return null;
 
   useEffect(() => {
     load();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => load());
+    const { data: sub } = sb.auth.onAuthStateChange(() => load());
     return () => sub.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function save() {
     setMsg("");
 
-    const { error } = await supabase
+    const { error } = await sb
       .from("rules")
       .update({ content, updated_at: new Date().toISOString() })
       .eq("id", 1);
@@ -111,12 +113,7 @@ if (!supabase) return null;
         </div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={14}
-            style={{ width: "100%", padding: 10 }}
-          />
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={14} style={{ width: "100%", padding: 10 }} />
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={save}>Guardar</button>
             <button onClick={cancel}>Cancelar</button>
@@ -132,3 +129,4 @@ if (!supabase) return null;
     </div>
   );
 }
+
