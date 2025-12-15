@@ -1,23 +1,11 @@
 // src/lib/supabaseClient.ts
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
-let _client: SupabaseClient | null = null;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export function getSupabaseBrowserClient(): SupabaseClient {
-  // Evita que se ejecute en SSR/build
-  if (typeof window === "undefined") {
-    throw new Error("Supabase client requested on the server. Use it only in client components.");
-  }
-
-  if (_client) return _client;
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anon) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-
-  _client = createClient(url, anon);
-  return _client;
-}
+// OJO: no tirar error en import-time (build). Solo avisar en runtime si faltan.
+export const supabase =
+  url && anon
+    ? createClient(url, anon)
+    : (null as unknown as ReturnType<typeof createClient>);
