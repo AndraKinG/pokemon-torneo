@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 
 export default function NavBar() {
   const [uid, setUid] = useState<string | null>(null);
@@ -11,7 +11,10 @@ export default function NavBar() {
 
   async function refreshOnce() {
     setLoading(true);
+
     try {
+      const supabase = getSupabaseBrowserClient();
+
       const { data, error } = await supabase.auth.getSession();
       if (error) {
         setUid(null);
@@ -40,6 +43,8 @@ export default function NavBar() {
   }
 
   useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+
     refreshOnce();
 
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
@@ -78,3 +83,4 @@ export default function NavBar() {
     </nav>
   );
 }
+

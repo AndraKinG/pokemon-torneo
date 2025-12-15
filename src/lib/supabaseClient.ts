@@ -1,6 +1,23 @@
-import { createClient } from "@supabase/supabase-js";
+// src/lib/supabaseClient.ts
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+let _client: SupabaseClient | null = null;
+
+export function getSupabaseBrowserClient(): SupabaseClient {
+  // Evita que se ejecute en SSR/build
+  if (typeof window === "undefined") {
+    throw new Error("Supabase client requested on the server. Use it only in client components.");
+  }
+
+  if (_client) return _client;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anon) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
+
+  _client = createClient(url, anon);
+  return _client;
+}

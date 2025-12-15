@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Profile = { id: string; display_name: string };
@@ -72,6 +72,8 @@ export default function CapturasPorJugadorPage() {
 
   async function load() {
     setMsg("");
+
+    const supabase = getSupabaseBrowserClient();
 
     const p = await supabase.from("profiles").select("id, display_name");
     const c = await supabase.from("captures").select("*").order("captured_at", { ascending: false });
@@ -151,7 +153,15 @@ export default function CapturasPorJugadorPage() {
   return (
     <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", padding: "0 16px" }}>
       {/* Header responsive */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ minWidth: 240 }}>
           <h1 style={{ marginBottom: 6 }}>Capturas</h1>
           <p style={{ marginTop: 0, maxWidth: 560 }}>
@@ -177,7 +187,11 @@ export default function CapturasPorJugadorPage() {
       ) : (
         <>
           {/* Slider infinito (Desktop=3, Mobile=1) */}
-          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}>
+          <div
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+            style={{ display: "grid", placeItems: "center", marginTop: 10, userSelect: "none" }}
+          >
             <div
               style={{
                 display: "flex",
@@ -192,12 +206,36 @@ export default function CapturasPorJugadorPage() {
             >
               {isDesktop ? (
                 <>
-                  <UserCard user={users[leftIndex]} count={countByUser.get(users[leftIndex].id) ?? 0} variant="side" onClick={prev} isDesktop={isDesktop} />
-                  <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
-                  <UserCard user={users[rightIndex]} count={countByUser.get(users[rightIndex].id) ?? 0} variant="side" onClick={next} isDesktop={isDesktop} />
+                  <UserCard
+                    user={users[leftIndex]}
+                    count={countByUser.get(users[leftIndex].id) ?? 0}
+                    variant="side"
+                    onClick={prev}
+                    isDesktop={isDesktop}
+                  />
+                  <UserCard
+                    user={users[centerIndex]}
+                    count={countByUser.get(users[centerIndex].id) ?? 0}
+                    variant="center"
+                    onClick={() => {}}
+                    isDesktop={isDesktop}
+                  />
+                  <UserCard
+                    user={users[rightIndex]}
+                    count={countByUser.get(users[rightIndex].id) ?? 0}
+                    variant="side"
+                    onClick={next}
+                    isDesktop={isDesktop}
+                  />
                 </>
               ) : (
-                <UserCard user={users[centerIndex]} count={countByUser.get(users[centerIndex].id) ?? 0} variant="center" onClick={() => {}} isDesktop={isDesktop} />
+                <UserCard
+                  user={users[centerIndex]}
+                  count={countByUser.get(users[centerIndex].id) ?? 0}
+                  variant="center"
+                  onClick={() => {}}
+                  isDesktop={isDesktop}
+                />
               )}
             </div>
 
@@ -226,7 +264,7 @@ export default function CapturasPorJugadorPage() {
               <span style={{ color: "#666" }}>{capturesOfActiveUser.length} total</span>
             </div>
 
-            {/* ✅ filtros bonitos en móvil (2 columnas) */}
+            {/* filtros bonitos en móvil */}
             <div
               style={{
                 display: "grid",
@@ -244,7 +282,10 @@ export default function CapturasPorJugadorPage() {
               <button style={pillStyle(statusFilter === "muerto")} onClick={() => setStatusFilter("muerto")}>
                 Muerto
               </button>
-              <button style={pillStyle(statusFilter === "no_capturado")} onClick={() => setStatusFilter("no_capturado")}>
+              <button
+                style={pillStyle(statusFilter === "no_capturado")}
+                onClick={() => setStatusFilter("no_capturado")}
+              >
                 No capturado
               </button>
             </div>
@@ -284,7 +325,6 @@ export default function CapturasPorJugadorPage() {
                     <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
                       <PokemonSprite name={c.pokemon} size={44} />
 
-                      {/* ✅ Solo mote (nickname) */}
                       <div style={{ minWidth: 0 }}>
                         <div
                           style={{
@@ -312,7 +352,6 @@ export default function CapturasPorJugadorPage() {
                       </div>
                     </div>
 
-                    {/* ✅ badge abajo en móvil para que no se corte */}
                     <div style={{ display: "flex", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
                       <span
                         style={{
@@ -383,4 +422,3 @@ function UserCard({
     </div>
   );
 }
-
