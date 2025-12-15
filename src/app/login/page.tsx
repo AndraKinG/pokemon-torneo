@@ -8,6 +8,8 @@ export default function LoginPage() {
   if (!supabase) {
     return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   }
+if (!supabase) return null;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");

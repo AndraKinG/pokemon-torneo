@@ -19,6 +19,8 @@ export default function ReglasPage() {
   if (!supabase) {
     return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   }
+if (!supabase) return null;
+
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);

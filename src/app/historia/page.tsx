@@ -71,6 +71,7 @@ export default function HistoriaPage() {
   if (!supabase) {
     return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   }
+if (!supabase) return null;
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
   const [msg, setMsg] = useState("");

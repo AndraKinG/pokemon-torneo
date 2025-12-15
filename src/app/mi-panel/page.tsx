@@ -75,6 +75,8 @@ export default function MiPanelPage() {
   if (!supabase) {
     return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   }
+if (!supabase) return null;
+
   const [msg, setMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
 

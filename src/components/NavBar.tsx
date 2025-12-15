@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function NavBar() {
+
+  if (!supabase) return null;
+  if (!supabase) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
   const [uid, setUid] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import PokemonSprite from "@/components/PokemonSprite";
 
 type Profile = { id: string; display_name: string };
@@ -47,6 +47,8 @@ function mod(n: number, m: number) {
 }
 
 export default function CapturasPorJugadorPage() {
+if (!supabase) return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+if (!supabase) return null;
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [msg, setMsg] = useState("");
