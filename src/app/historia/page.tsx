@@ -67,6 +67,10 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 }
 
 export default function HistoriaPage() {
+
+  if (!supabase) {
+    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  }
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [progress, setProgress] = useState<ProgressRow[]>([]);
   const [msg, setMsg] = useState("");

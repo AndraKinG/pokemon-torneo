@@ -36,6 +36,10 @@ function mod(n: number, m: number) {
 }
 
 export default function EquiposPage() {
+
+  if (!supabase) {
+    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  }
   const [slots, setSlots] = useState<Slot[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [msg, setMsg] = useState("");

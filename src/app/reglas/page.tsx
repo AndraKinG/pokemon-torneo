@@ -15,6 +15,10 @@ type Profile = {
 };
 
 export default function ReglasPage() {
+
+  if (!supabase) {
+    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  }
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);

@@ -4,6 +4,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+
+  if (!supabase) {
+    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  }
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");

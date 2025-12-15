@@ -71,6 +71,10 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 }
 
 export default function MiPanelPage() {
+
+  if (!supabase) {
+    return <div style={{ padding: 16 }}>Supabase no configurado.</div>;
+  }
   const [msg, setMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
