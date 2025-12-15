@@ -75,8 +75,6 @@ if (!supabase) return null;
   async function load() {
     setMsg("");
 
-    const supabase = getSupabaseBrowserClient();
-
     const p = await supabase.from("profiles").select("id, display_name");
     const c = await supabase.from("captures").select("*").order("captured_at", { ascending: false });
 
