@@ -1,27 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export default function NavBar() {
   const sb = useMemo(() => supabaseBrowser(), []);
+  const running = useRef(false);
 
   const [uid, setUid] = useState<string | null>(null);
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   async function refreshOnce() {
+    if (running.current) return; // evita doble llamada
+    running.current = true;
+
     setLoading(true);
     try {
-      const { data, error } = await sb.auth.getSession();
+      // Mejor que getSession para UI: devuelve rápido o error claro
+      const { data, error } = await sb.auth.getUser();
       if (error) {
         setUid(null);
         setName("");
         return;
       }
 
-      const userId = data.session?.user?.id ?? null;
+      const userId = data.user?.id ?? null;
       setUid(userId);
 
       if (!userId) {
@@ -33,17 +38,17 @@ export default function NavBar() {
         .from("profiles")
         .select("display_name")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
       setName(profile?.display_name ?? "Mi cuenta");
     } finally {
       setLoading(false);
+      running.current = false;
     }
   }
 
   useEffect(() => {
     refreshOnce();
-
     const { data: sub } = sb.auth.onAuthStateChange(() => refreshOnce());
     return () => sub.subscription.unsubscribe();
   }, [sb]);

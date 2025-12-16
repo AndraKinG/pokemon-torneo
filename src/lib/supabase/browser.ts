@@ -10,10 +10,6 @@ export function supabaseBrowser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  console.log("SUPABASE INIT", { url, anon: anon?.slice(0, 6) });
-
   _client = createClient(url, anon);
   return _client;
 }
-
-

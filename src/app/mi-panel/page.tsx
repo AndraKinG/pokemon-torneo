@@ -72,6 +72,15 @@ function BadgeSprite({ index, filled }: { index: number; filled: boolean }) {
 export default function MiPanelPage() {
   const sb = useMemo(() => supabaseBrowser(), []);
 
+  function cardStyle() {
+    return {
+      border: "1px solid #ddd",
+      borderRadius: 16,
+      background: "white",
+      padding: 14,
+    } as const;
+  }
+
   const [msg, setMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
@@ -82,11 +91,32 @@ export default function MiPanelPage() {
   const [games, setGames] = useState<{ id: number; name: string }[]>([]);
   const [routes, setRoutes] = useState<{ id: number; game_id: number; name: string; name_es?: string | null }[]>([]);
 
+  const [captures, setCaptures] = useState<Capture[]>([]);
+  const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([]);
+
+  const [teamInput, setTeamInput] = useState<Record<number, string>>({
+    1: "",
+    2: "",
+    3: "",
+    4: "",
+    5: "",
+    6: "",
+  });
+
+  const [pokemon, setPokemon] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [routeId, setRouteId] = useState<number | "">("");
+  const [status, setStatus] = useState<CaptureStatus>("vivo");
+
+  const [myBadges, setMyBadges] = useState<number>(0);
+  const [myProgressUpdatedAt, setMyProgressUpdatedAt] = useState<string | null>(null);
+
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 900px)");
     const apply = () => setIsDesktop(mq.matches);
     apply();
+
     if (typeof mq.addEventListener === "function") {
       mq.addEventListener("change", apply);
       return () => mq.removeEventListener("change", apply);
@@ -98,6 +128,7 @@ export default function MiPanelPage() {
     }
   }, []);
 
+  // Lista de Pokémon para autocompletar (PokeAPI)
   const [allPokemon, setAllPokemon] = useState<string[]>([]);
   const [pokemonLoading, setPokemonLoading] = useState(false);
 
@@ -112,6 +143,7 @@ export default function MiPanelPage() {
         const names: string[] = (json?.results ?? []).map((r: any) => r.name);
         if (!cancelled) setAllPokemon(names);
       } catch {
+        // silencio
       } finally {
         if (!cancelled) setPokemonLoading(false);
       }
@@ -122,18 +154,6 @@ export default function MiPanelPage() {
       cancelled = true;
     };
   }, []);
-
-  const [captures, setCaptures] = useState<Capture[]>([]);
-  const [pokemon, setPokemon] = useState("");
-  const [nickname, setNickname] = useState("");
-  const [routeId, setRouteId] = useState<number | "">("");
-  const [status, setStatus] = useState<CaptureStatus>("vivo");
-
-  const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([]);
-  const [teamInput, setTeamInput] = useState<Record<number, string>>({ 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" });
-
-  const [myBadges, setMyBadges] = useState<number>(0);
-  const [myProgressUpdatedAt, setMyProgressUpdatedAt] = useState<string | null>(null);
 
   const aliveCaptures = useMemo(() => captures.filter((c) => c.status === "vivo"), [captures]);
 
@@ -147,22 +167,10 @@ export default function MiPanelPage() {
     return m;
   }, [aliveCaptures]);
 
-  const routesForActiveGame = useMemo(() => {
-    if (!activeGameId) return [];
-    return routes.filter((r) => r.game_id === activeGameId).sort((a, b) => a.name.localeCompare(b.name));
-  }, [routes, activeGameId]);
-
-  useEffect(() => {
-    setRouteId("");
-  }, [activeGameId]);
-
-  function cardStyle() {
-    return {
-      border: "1px solid #ddd",
-      borderRadius: 16,
-      background: "white",
-      padding: 14,
-    } as const;
+  function selectedRouteName(): string | null {
+    if (routeId === "" || !activeGameId) return null;
+    const r = routes.find((x) => x.id === routeId);
+    return r?.name ?? null;
   }
 
   async function loadRunData() {
@@ -179,7 +187,17 @@ export default function MiPanelPage() {
   async function loadAll() {
     setMsg("");
 
-    const { data: auth } = await sb.auth.getUser();
+    const { data: auth, error: authErr } = await sb.auth.getUser();
+    if (authErr) {
+      setUserId(null);
+      setProfile(null);
+      setCaptures([]);
+      setTeamSlots([]);
+      setMyBadges(0);
+      setMyProgressUpdatedAt(null);
+      return;
+    }
+
     const uid = auth?.user?.id ?? null;
     setUserId(uid);
 
@@ -194,8 +212,9 @@ export default function MiPanelPage() {
       return;
     }
 
-    const p = await sb.from("profiles").select("id, display_name, role").eq("id", uid).single();
+    const p = await sb.from("profiles").select("id, display_name, role").eq("id", uid).maybeSingle();
     if (!p.error && p.data) setProfile(p.data as Profile);
+    else setProfile(null);
 
     const caps = await sb.from("captures").select("*").eq("user_id", uid).order("captured_at", { ascending: false });
     if (caps.error) setMsg(caps.error.message);
@@ -221,14 +240,8 @@ export default function MiPanelPage() {
 
   useEffect(() => {
     loadAll();
-
-    const { data: sub } = sb.auth.onAuthStateChange(() => {
-      loadAll();
-    });
-
-    return () => {
-      sub?.subscription?.unsubscribe();
-    };
+    const { data: sub } = sb.auth.onAuthStateChange(() => loadAll());
+    return () => sub.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -237,19 +250,16 @@ export default function MiPanelPage() {
     if (profile?.role !== "admin") return;
 
     setBusy(true);
-    const up = await sb.from("runs").update({ active_game_id: nextGameId, updated_at: new Date().toISOString() }).eq("id", 1);
+    const up = await sb
+      .from("runs")
+      .update({ active_game_id: nextGameId, updated_at: new Date().toISOString() })
+      .eq("id", 1);
     setBusy(false);
 
     if (up.error) return setMsg(up.error.message);
 
     setActiveGameId(nextGameId);
     setMsg("Región/juego activo actualizado ✅");
-  }
-
-  function selectedRouteName(): string | null {
-    if (routeId === "" || !activeGameId) return null;
-    const r = routesForActiveGame.find((x) => x.id === routeId);
-    return r?.name ?? null;
   }
 
   async function addCapture() {
@@ -264,7 +274,6 @@ export default function MiPanelPage() {
     if (routeId === "") return setMsg("La Ruta es obligatoria.");
     const rName = selectedRouteName();
     if (!rName) return setMsg("Ruta inválida.");
-
     if (!p || !n || !s) return setMsg("Pokémon, Mote y Estado son obligatorios.");
 
     setBusy(true);
@@ -292,85 +301,27 @@ export default function MiPanelPage() {
     await loadAll();
   }
 
-  async function removeFromTeamIfNotAlive(pokemonName: string) {
-    if (!userId) return;
-    const p = pokemonName.trim();
-    if (!p) return;
-
-    setBusy(true);
-    const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("pokemon", p);
-    setBusy(false);
-
-    if (del.error) setMsg(del.error.message);
-  }
-
-  async function updateCaptureStatus(id: number, newStatus: CaptureStatus) {
-    setMsg("");
-    if (!userId) return;
-
-    const cap = captures.find((c) => c.id === id);
-
-    setBusy(true);
-    const up = await sb.from("captures").update({ status: newStatus }).eq("id", id);
-    setBusy(false);
-
-    if (up.error) return setMsg(up.error.message);
-
-    if (cap && newStatus !== "vivo") await removeFromTeamIfNotAlive(cap.pokemon);
-    await loadAll();
-  }
-
   async function deleteCapture(id: number) {
     setMsg("");
     if (!userId) return;
-
-    const cap = captures.find((c) => c.id === id);
 
     setBusy(true);
     const del = await sb.from("captures").delete().eq("id", id);
     setBusy(false);
 
     if (del.error) return setMsg(del.error.message);
-
-    if (cap?.pokemon) await removeFromTeamIfNotAlive(cap.pokemon);
     await loadAll();
   }
 
-  async function setSlot(slot: number, pokemonName: string) {
-    setMsg("");
-    if (!userId) return setMsg("No estás logueado.");
-
-    const p = pokemonName.trim();
-    if (!p) return;
-
-    const key = p.toLowerCase();
-    if (!alivePokemonSet.has(key)) return setMsg("Solo puedes usar Pokémon capturados y VIVOS.");
-
-    for (const [slotStr, val] of Object.entries(teamInput)) {
-      const s = Number(slotStr);
-      if (s === slot) continue;
-      if ((val ?? "").trim().toLowerCase() === key) return setMsg("Ese Pokémon ya está en tu equipo. Solo puede estar una vez.");
-    }
-
-    const nick = nicknameByPokemon.get(key) ?? null;
-
-    setBusy(true);
-    const up = await sb.from("team_slots").upsert({ user_id: userId, slot, pokemon: p, nickname: nick }, { onConflict: "user_id,slot" });
-    setBusy(false);
-
-    if (up.error) return setMsg(up.error.message);
-    await loadAll();
-  }
-
-  async function clearSlot(slot: number) {
+  async function updateCaptureStatus(id: number, newStatus: CaptureStatus) {
     setMsg("");
     if (!userId) return;
 
     setBusy(true);
-    const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("slot", slot);
+    const up = await sb.from("captures").update({ status: newStatus }).eq("id", id);
     setBusy(false);
 
-    if (del.error) return setMsg(del.error.message);
+    if (up.error) return setMsg(up.error.message);
     await loadAll();
   }
 
@@ -395,6 +346,46 @@ export default function MiPanelPage() {
     setMsg("Medallas actualizadas ✅");
   }
 
+  async function setSlot(slot: number, pokemonName: string) {
+    setMsg("");
+    if (!userId) return setMsg("No estás logueado.");
+
+    const p = pokemonName.trim();
+    if (!p) return;
+
+    const key = p.toLowerCase();
+    if (!alivePokemonSet.has(key)) return setMsg("Solo puedes usar Pokémon capturados y VIVOS.");
+
+    for (const [slotStr, val] of Object.entries(teamInput)) {
+      const s = Number(slotStr);
+      if (s === slot) continue;
+      if ((val ?? "").trim().toLowerCase() === key) return setMsg("Ese Pokémon ya está en tu equipo. Solo puede estar una vez.");
+    }
+
+    const nick = nicknameByPokemon.get(key) ?? null;
+
+    setBusy(true);
+    const up = await sb
+      .from("team_slots")
+      .upsert({ user_id: userId, slot, pokemon: p, nickname: nick }, { onConflict: "user_id,slot" });
+    setBusy(false);
+
+    if (up.error) return setMsg(up.error.message);
+    await loadAll();
+  }
+
+  async function clearSlot(slot: number) {
+    setMsg("");
+    if (!userId) return;
+
+    setBusy(true);
+    const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("slot", slot);
+    setBusy(false);
+
+    if (del.error) return setMsg(del.error.message);
+    await loadAll();
+  }
+
   if (!userId) {
     return (
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 16px" }}>
@@ -402,17 +393,362 @@ export default function MiPanelPage() {
         <p>
           No estás logueado. Ve a <a href="/login">Login</a>.
         </p>
+        {msg && <p style={{ color: "crimson" }}>{msg}</p>}
       </div>
     );
   }
 
+  const routesForActiveGame = activeGameId ? routes.filter((r) => r.game_id === activeGameId) : [];
   const isAdmin = profile?.role === "admin";
 
-  // --- A PARTIR DE AQUÍ TU JSX ES EL MISMO ---
-  // (no lo recorto porque ya lo tienes; sólo cambia supabase -> sb en handlers)
   return (
     <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
-      {/* ...tu JSX igual... */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 style={{ marginBottom: 6 }}>Mi panel</h1>
+          <p style={{ marginTop: 0, color: "#666" }}>
+            Usuario: <b>{profile?.display_name ?? "..."}</b>
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a href="/equipo">Ver Equipos</a>
+          <a href="/capturas">Ver Capturas</a>
+          <a href="/historia">Ver Historia</a>
+        </div>
+      </div>
+
+      {msg && (
+        <div style={{ marginTop: 10, padding: 10, border: "1px solid #ddd", borderRadius: 12, background: "white" }}>
+          {msg}
+        </div>
+      )}
+
+      {/* ================== ADMIN: REGIÓN/JUEGO ACTIVO ================== */}
+      <div style={{ marginTop: 18, ...cardStyle() }}>
+        <h2 style={{ marginTop: 0 }}>Región / juego activo</h2>
+        <p style={{ marginTop: 0, color: "#666" }}>
+          Esta selección afecta a las rutas disponibles para <b>todos</b>. Solo el admin puede cambiarlo.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            value={activeGameId ?? ""}
+            disabled={!isAdmin || busy}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!v) return;
+              if (isAdmin) setActiveGameAsAdmin(v);
+            }}
+            style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12, minWidth: 220 }}
+          >
+            <option value="">(Selecciona juego)</option>
+            {games.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+
+          {!isAdmin && <span style={{ color: "#888", fontSize: 13 }}>(Solo admin puede cambiarlo)</span>}
+        </div>
+      </div>
+
+      {/* ================== MIS MEDALLAS ================== */}
+      <div style={{ marginTop: 18, ...cardStyle() }}>
+        <h2 style={{ marginTop: 0 }}>Mis medallas</h2>
+        <p style={{ marginTop: 0, color: "#666" }}>
+          Toca una medalla para indicar cuántas llevas (0–8). Esto alimenta el ranking de <a href="/historia">Historia</a>.
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>
+            {myBadges} {myBadges === 1 ? "medalla" : "medallas"}
+          </div>
+          <div style={{ color: "#888", fontSize: 12 }}>
+            {myProgressUpdatedAt ? `registrado: ${new Date(myProgressUpdatedAt).toLocaleString()}` : "sin registro"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gridTemplateColumns: isDesktop ? "repeat(8, 34px)" : "repeat(4, 34px)",
+            gap: 8,
+            justifyContent: "start",
+          }}
+        >
+          {Array.from({ length: 8 }).map((_, i) => {
+            const filled = i < myBadges;
+            return (
+              <button
+                key={i}
+                disabled={busy}
+                onClick={() => {
+                  const next = i + 1;
+                  const final = next === myBadges ? i : next;
+                  setMyBadges(final);
+                }}
+                style={{ all: "unset", cursor: busy ? "not-allowed" : "pointer" }}
+              >
+                <BadgeSprite index={i} filled={filled} />
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => saveBadges(myBadges)} disabled={busy}>
+            Guardar medallas
+          </button>
+          <button onClick={() => setMyBadges(0)} disabled={busy}>
+            Poner a 0
+          </button>
+        </div>
+      </div>
+
+      {/* ================== MI EQUIPO ================== */}
+      <div style={{ marginTop: 18, ...cardStyle() }}>
+        <h2 style={{ marginTop: 0 }}>Mi equipo</h2>
+        <p style={{ marginTop: 0, color: "#666" }}>
+          Solo puedes seleccionar Pokémon <b>capturados y VIVOS</b>. Cada Pokémon solo puede estar <b>una vez</b>.
+        </p>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {[1, 2, 3, 4, 5, 6].map((n) => {
+            const current = (teamInput[n] ?? "").trim();
+            const datalistId = `alive-pokemon-slot-${n}`;
+
+            const usedByOtherSlots = new Set(
+              Object.entries(teamInput)
+                .filter(([slotStr]) => Number(slotStr) !== n)
+                .map(([, val]) => (val ?? "").trim().toLowerCase())
+                .filter(Boolean)
+            );
+
+            const availableOptions = aliveCaptures.filter((c) => {
+              const key = c.pokemon.trim().toLowerCase();
+              return !usedByOtherSlots.has(key);
+            });
+
+            return (
+              <div
+                key={n}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  border: "1px solid #eee",
+                  borderRadius: 12,
+                  padding: "10px 10px",
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ width: 40, height: 40, display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  {current ? <PokemonSprite name={current} size={38} /> : null}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <input
+                    list={datalistId}
+                    value={teamInput[n] ?? ""}
+                    placeholder={`Slot ${n}: elige un Pokémon`}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const key = v.trim().toLowerCase();
+
+                      if (key && usedByOtherSlots.has(key)) {
+                        setMsg("Ese Pokémon ya está en tu equipo. Solo puede estar una vez.");
+                        setTeamInput((prev) => ({ ...prev, [n]: "" }));
+                        return;
+                      }
+                      setTeamInput((prev) => ({ ...prev, [n]: v }));
+                    }}
+                    onBlur={async () => {
+                      const v = (teamInput[n] ?? "").trim();
+                      if (!v) return;
+
+                      const key = v.toLowerCase();
+
+                      if (!alivePokemonSet.has(key)) {
+                        setMsg("Solo puedes usar Pokémon capturados y VIVOS.");
+                        setTeamInput((prev) => ({ ...prev, [n]: "" }));
+                        return;
+                      }
+                      if (usedByOtherSlots.has(key)) {
+                        setMsg("Ese Pokémon ya está en tu equipo. Solo puede estar una vez.");
+                        setTeamInput((prev) => ({ ...prev, [n]: "" }));
+                        return;
+                      }
+
+                      await setSlot(n, v);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      border: "1px solid #ddd",
+                      borderRadius: 12,
+                      boxSizing: "border-box",
+                    }}
+                  />
+
+                  <datalist id={datalistId}>
+                    {availableOptions.map((c) => (
+                      <option key={c.id} value={c.pokemon}>
+                        {c.nickname}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
+                <button onClick={() => clearSlot(n)} disabled={busy} style={{ flexShrink: 0 }}>
+                  Vaciar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ================== MIS CAPTURAS (route_id + game_id) ================== */}
+      <div style={{ marginTop: 18, ...cardStyle() }}>
+        <h2 style={{ marginTop: 0 }}>Mis capturas</h2>
+
+        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
+          <input
+            required
+            list="pokemon-list"
+            value={pokemon}
+            onChange={(e) => setPokemon(e.target.value)}
+            placeholder={pokemonLoading ? "Cargando Pokémon..." : "Pokémon (obligatorio)"}
+            disabled={busy}
+            style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12 }}
+          />
+
+          <input
+            required
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="Mote (obligatorio)"
+            disabled={busy}
+            style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12 }}
+          />
+
+          <select
+            required
+            value={routeId}
+            onChange={(e) => setRouteId(e.target.value ? Number(e.target.value) : "")}
+            disabled={busy || !activeGameId}
+            style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12 }}
+          >
+            <option value="">{activeGameId ? "Ruta (obligatorio)" : "Sin juego activo (admin)"}</option>
+            {routesForActiveGame.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            required
+            value={status}
+            onChange={(e) => setStatus(e.target.value as CaptureStatus)}
+            disabled={busy}
+            style={{ padding: 10, border: "1px solid #ddd", borderRadius: 12 }}
+          >
+            <option value="vivo">Vivo</option>
+            <option value="muerto">Muerto</option>
+            <option value="no_capturado">No capturado</option>
+          </select>
+        </div>
+
+        <datalist id="pokemon-list">
+          {allPokemon.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+
+        <div style={{ marginTop: 10 }}>
+          <button onClick={addCapture} disabled={busy}>
+            Añadir captura
+          </button>
+        </div>
+
+        <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+          {captures.length === 0 ? (
+            <p style={{ color: "#666" }}>Aún no tienes capturas.</p>
+          ) : (
+            captures.map((c) => {
+              const isMobile = !isDesktop;
+
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 14,
+                    padding: 12,
+                    background: "white",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <PokemonSprite name={c.pokemon} size={46} />
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: 16,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {c.nickname?.trim() ? c.nickname : "—"}
+                      </div>
+                      <div style={{ color: "#666", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.route || "sin ruta"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      marginTop: isMobile ? 12 : 0,
+                      justifyContent: isMobile ? "flex-start" : "flex-end",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <select
+                      value={c.status}
+                      onChange={(e) => updateCaptureStatus(c.id, e.target.value as CaptureStatus)}
+                      disabled={busy}
+                      style={{
+                        padding: 10,
+                        border: "1px solid #ddd",
+                        borderRadius: 12,
+                        minWidth: isMobile ? "180px" : 0,
+                      }}
+                    >
+                      <option value="vivo">Vivo</option>
+                      <option value="muerto">Muerto</option>
+                      <option value="no_capturado">No capturado</option>
+                    </select>
+
+                    <button onClick={() => deleteCapture(c.id)} disabled={busy} style={{ padding: "10px 12px" }}>
+                      Borrar
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }
