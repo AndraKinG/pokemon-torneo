@@ -302,28 +302,57 @@ export default function MiPanelPage() {
   }
 
   async function deleteCapture(id: number) {
-    setMsg("");
-    if (!userId) return;
+  setMsg("");
+  if (!userId) return;
 
-    setBusy(true);
-    const del = await sb.from("captures").delete().eq("id", id);
-    setBusy(false);
+  const cap = captures.find((c) => c.id === id);
 
-    if (del.error) return setMsg(del.error.message);
-    await loadAll();
+  setBusy(true);
+  const del = await sb.from("captures").delete().eq("id", id);
+  setBusy(false);
+
+  if (del.error) return setMsg(del.error.message);
+
+  if (cap?.pokemon) {
+    await removeFromTeamIfNotAlive(cap.pokemon);
   }
+
+  await loadAll();
+}
+
+
+async function removeFromTeamIfNotAlive(pokemonName: string) {
+  if (!userId) return;
+  const p = pokemonName.trim();
+  if (!p) return;
+
+  setBusy(true);
+  const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("pokemon", p);
+  setBusy(false);
+
+  if (del.error) setMsg(del.error.message);
+}
+
 
   async function updateCaptureStatus(id: number, newStatus: CaptureStatus) {
-    setMsg("");
-    if (!userId) return;
+  setMsg("");
+  if (!userId) return;
 
-    setBusy(true);
-    const up = await sb.from("captures").update({ status: newStatus }).eq("id", id);
-    setBusy(false);
+  const cap = captures.find((c) => c.id === id);
 
-    if (up.error) return setMsg(up.error.message);
-    await loadAll();
+  setBusy(true);
+  const up = await sb.from("captures").update({ status: newStatus }).eq("id", id);
+  setBusy(false);
+
+  if (up.error) return setMsg(up.error.message);
+
+  if (cap && newStatus !== "vivo") {
+    await removeFromTeamIfNotAlive(cap.pokemon);
   }
+
+  await loadAll();
+}
+
 
   async function saveBadges(nextBadges: number) {
     setMsg("");
