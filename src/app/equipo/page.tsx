@@ -50,8 +50,8 @@ export default function EquiposPage() {
     if (p.error) return setMsg(p.error.message);
     if (t.error) return setMsg(t.error.message);
 
-    setProfiles(p.data ?? []);
-    setSlots(t.data ?? []);
+    setProfiles((p.data ?? []) as Profile[]);
+    setSlots((t.data ?? []) as Slot[]);
   }
 
   useEffect(() => {
@@ -74,9 +74,7 @@ export default function EquiposPage() {
   const users = useMemo(() => {
     const ids = profiles.map((p) => p.id);
     const filledCount = new Map<string, number>();
-    slots.forEach((s) =>
-      filledCount.set(s.user_id, (filledCount.get(s.user_id) ?? 0) + 1)
-    );
+    slots.forEach((s) => filledCount.set(s.user_id, (filledCount.get(s.user_id) ?? 0) + 1));
     return ids.sort((a, b) => (filledCount.get(b) ?? 0) - (filledCount.get(a) ?? 0));
   }, [profiles, slots]);
 
@@ -88,8 +86,7 @@ export default function EquiposPage() {
   function getTeam(uid: string) {
     const team = new Map<number, { pokemon: string; nickname: string | null }>();
     slots.forEach((s) => {
-      if (s.user_id === uid)
-        team.set(s.slot, { pokemon: s.pokemon, nickname: s.nickname ?? null });
+      if (s.user_id === uid) team.set(s.slot, { pokemon: s.pokemon, nickname: s.nickname ?? null });
     });
     return team;
   }
@@ -99,6 +96,21 @@ export default function EquiposPage() {
   }
   function next() {
     if (users.length) setActiveIndex((i) => i + 1);
+  }
+
+  // ✅ SWIPE (igual que Capturas)
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  function onTouchStart(e: React.TouchEvent) {
+    setTouchStartX(e.touches[0]?.clientX ?? null);
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX == null) return;
+    const endX = e.changedTouches[0]?.clientX ?? touchStartX;
+    const dx = endX - touchStartX;
+    setTouchStartX(null);
+    if (Math.abs(dx) < 40) return;
+    if (dx > 0) prev();
+    else next();
   }
 
   const centerIndex = users.length ? mod(activeIndex, users.length) : 0;
@@ -117,39 +129,60 @@ export default function EquiposPage() {
       {users.length === 0 ? (
         <p>No hay jugadores aún.</p>
       ) : (
-        <div style={{ display: "grid", placeItems: "center", marginTop: 16 }}>
-          <div style={{ display: "flex", gap: 18 }}>
-            {isDesktop && (
-              <TrainerCard
-                uid={users[leftIndex]}
-                name={nameById.get(users[leftIndex])!}
-                avatar={avatarSrcFromKey(avatarById.get(users[leftIndex]) ?? undefined)}
-                team={getTeam(users[leftIndex])}
-                variant="side"
-                onClick={prev}
-	        isDesktop={isDesktop}
-              />
-            )}
+        <div
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          style={{
+            display: "grid",
+            placeItems: "center",
+            marginTop: 16,
+            userSelect: "none",
+            touchAction: "pan-y", // permite scroll vertical sin romper swipe horizontal
+            width: "100%",
+          }}
+        >
+          <div style={{ display: "flex", gap: 18, width: "100%", justifyContent: "center" }}>
+            {isDesktop ? (
+              <>
+                <TrainerCard
+                  uid={users[leftIndex]}
+                  name={nameById.get(users[leftIndex]) ?? `Jugador ${users[leftIndex].slice(0, 6)}`}
+                  avatar={avatarSrcFromKey(avatarById.get(users[leftIndex]) ?? undefined)}
+                  team={getTeam(users[leftIndex])}
+                  variant="side"
+                  onClick={prev}
+                  isDesktop={isDesktop}
+                />
 
-            <TrainerCard
-              uid={users[centerIndex]}
-              name={nameById.get(users[centerIndex])!}
-              avatar={avatarSrcFromKey(avatarById.get(users[centerIndex]) ?? undefined)}
-              team={getTeam(users[centerIndex])}
-              variant="center"
-              onClick={() => {}}
-	      isDesktop={isDesktop}
-            />
+                <TrainerCard
+                  uid={users[centerIndex]}
+                  name={nameById.get(users[centerIndex]) ?? `Jugador ${users[centerIndex].slice(0, 6)}`}
+                  avatar={avatarSrcFromKey(avatarById.get(users[centerIndex]) ?? undefined)}
+                  team={getTeam(users[centerIndex])}
+                  variant="center"
+                  onClick={() => {}}
+                  isDesktop={isDesktop}
+                />
 
-            {isDesktop && (
+                <TrainerCard
+                  uid={users[rightIndex]}
+                  name={nameById.get(users[rightIndex]) ?? `Jugador ${users[rightIndex].slice(0, 6)}`}
+                  avatar={avatarSrcFromKey(avatarById.get(users[rightIndex]) ?? undefined)}
+                  team={getTeam(users[rightIndex])}
+                  variant="side"
+                  onClick={next}
+                  isDesktop={isDesktop}
+                />
+              </>
+            ) : (
               <TrainerCard
-                uid={users[rightIndex]}
-                name={nameById.get(users[rightIndex])!}
-                avatar={avatarSrcFromKey(avatarById.get(users[rightIndex]) ?? undefined)}
-                team={getTeam(users[rightIndex])}
-                variant="side"
-                onClick={next}
-	        isDesktop={isDesktop}
+                uid={users[centerIndex]}
+                name={nameById.get(users[centerIndex]) ?? `Jugador ${users[centerIndex].slice(0, 6)}`}
+                avatar={avatarSrcFromKey(avatarById.get(users[centerIndex]) ?? undefined)}
+                team={getTeam(users[centerIndex])}
+                variant="center"
+                onClick={() => {}}
+                isDesktop={isDesktop}
               />
             )}
           </div>
@@ -180,32 +213,33 @@ function TrainerCard({
 
   return (
     <div
+      key={uid}
       onClick={onClick}
       style={{
-        width: isDesktop
-  ? isCenter
-    ? 420
-    : 340
-  : "100%",
-maxWidth: isDesktop ? undefined : 520,
+        width: isDesktop ? (isCenter ? 420 : 340) : "100%",
+        maxWidth: isDesktop ? undefined : 520,
         border: "1px solid #ddd",
         borderRadius: 16,
         padding: 14,
         background: "white",
         opacity: isCenter ? 1 : 0.45,
         cursor: isCenter ? "default" : "pointer",
+        boxSizing: "border-box",
       }}
     >
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
         <img
           src={avatar}
           alt="avatar"
           width={64}
           height={64}
-          style={{ imageRendering: "pixelated", borderRadius: 12 }}
+          style={{ imageRendering: "pixelated", borderRadius: 12, flexShrink: 0 }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
         />
-        <div>
-          <div style={{ fontSize: isCenter ? 22 : 16, fontWeight: 900 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: isCenter ? 22 : 16, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {name}
           </div>
           <div style={{ fontSize: 13, color: "#666" }}>Equipo en uso</div>
@@ -225,14 +259,21 @@ maxWidth: isDesktop ? undefined : 520,
                 border: "1px solid #eee",
                 borderRadius: 12,
                 padding: "8px 10px",
+                minWidth: 0,
               }}
             >
-              {entry?.pokemon ? (
-                <PokemonSprite name={entry.pokemon} size={34} />
-              ) : (
-                <div style={{ width: 34, height: 34 }} />
-              )}
-              <span style={{ marginLeft: "auto", fontWeight: 800 }}>
+              {entry?.pokemon ? <PokemonSprite name={entry.pokemon} size={34} /> : <div style={{ width: 34, height: 34 }} />}
+
+              <span
+                style={{
+                  marginLeft: "auto",
+                  fontWeight: 800,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {entry?.nickname ?? "—"}
               </span>
             </div>
