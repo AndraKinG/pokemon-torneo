@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
-function withTimeout<T>(p: Promise<T>, ms: number) {
+function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
   return Promise.race([
-    p,
+    Promise.resolve(p),
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
   ]);
 }
@@ -19,22 +19,22 @@ export default function NavBar() {
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
-  const refreshOnce = useCallback(async () => {
+  async function refreshOnce() {
     if (running.current) return;
     running.current = true;
 
     setLoading(true);
     try {
-      // ⛑️ timeout para evitar "..." infinito
-      const { data, error } = await withTimeout(sb.auth.getUser(), 6000);
+      // auth
+      const authRes: any = await withTimeout(sb.auth.getUser(), 6000).catch(() => null);
 
-      if (error) {
+      if (!authRes || authRes.error) {
         setUid(null);
         setName("");
         return;
       }
 
-      const userId = data.user?.id ?? null;
+      const userId: string | null = authRes.data?.user?.id ?? null;
       setUid(userId);
 
       if (!userId) {
@@ -42,28 +42,25 @@ export default function NavBar() {
         return;
       }
 
-      const { data: profile } = await withTimeout(
+      // profile
+      const profRes: any = await withTimeout(
         sb.from("profiles").select("display_name").eq("id", userId).maybeSingle(),
         6000
-      );
+      ).catch(() => null);
 
-      setName(profile?.display_name ?? "Mi cuenta");
-    } catch {
-      // ⛑️ si se cuelga, salimos de loading
-      setUid(null);
-      setName("");
+      const displayName = profRes?.data?.display_name ?? "Mi cuenta";
+      setName(displayName);
     } finally {
       setLoading(false);
       running.current = false;
     }
-  }, [sb]);
+  }
 
   useEffect(() => {
     refreshOnce();
 
     const { data: sub } = sb.auth.onAuthStateChange(() => refreshOnce());
 
-    // 🔁 reintenta al volver a la pestaña/ventana
     const onVis = () => {
       if (document.visibilityState === "visible") refreshOnce();
     };
@@ -77,7 +74,8 @@ export default function NavBar() {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
     };
-  }, [sb, refreshOnce]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <nav style={{ display: "flex", gap: 16, padding: 12, borderBottom: "1px solid #ddd", alignItems: "center" }}>

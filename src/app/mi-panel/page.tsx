@@ -34,9 +34,9 @@ type Profile = {
   avatar_key?: string | null;
 };
 
-function withTimeout<T>(p: Promise<T>, ms: number) {
+function withTimeout<T>(p: PromiseLike<T>, ms: number): Promise<T> {
   return Promise.race([
-    p,
+    Promise.resolve(p),
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
   ]);
 }
