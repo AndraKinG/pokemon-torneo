@@ -3,8 +3,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
+import { avatarSrcFromKey } from "@/lib/avatars";
 
-type Profile = { id: string; display_name: string };
+type Profile = {
+  id: string;
+  display_name: string;
+  avatar_key?: string | null;
+};
 
 type Status = "all" | "vivo" | "muerto" | "no_capturado";
 
@@ -61,30 +66,22 @@ export default function CapturasPorJugadorPage() {
     const mq = window.matchMedia("(min-width: 900px)");
     const apply = () => setIsDesktop(mq.matches);
     apply();
-    if (typeof mq.addEventListener === "function") {
-      mq.addEventListener("change", apply);
-      return () => mq.removeEventListener("change", apply);
-    } else {
-      // @ts-ignore
-      mq.addListener(apply);
-      // @ts-ignore
-      return () => mq.removeListener(apply);
-    }
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
   }, []);
 
   async function load() {
-  setMsg("");
+    setMsg("");
 
-  const p = await sb.from("profiles").select("id, display_name");
-  const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
+    const p = await sb.from("profiles").select("id, display_name, avatar_key");
+    const c = await sb.from("captures").select("*").order("captured_at", { ascending: false });
 
-  if (p.error) return setMsg(p.error.message);
-  if (c.error) return setMsg(c.error.message);
+    if (p.error) return setMsg(p.error.message);
+    if (c.error) return setMsg(c.error.message);
 
-  setProfiles((p.data ?? []) as Profile[]);
-  setCaptures((c.data ?? []) as Capture[]);
-}
-
+    setProfiles(p.data ?? []);
+    setCaptures(c.data ?? []);
+  }
 
   useEffect(() => {
     load();
@@ -117,12 +114,10 @@ export default function CapturasPorJugadorPage() {
   }, [capturesOfActiveUser, statusFilter]);
 
   function prev() {
-    if (!users.length) return;
-    setActiveIndex((i) => i - 1);
+    if (users.length) setActiveIndex((i) => i - 1);
   }
   function next() {
-    if (!users.length) return;
-    setActiveIndex((i) => i + 1);
+    if (users.length) setActiveIndex((i) => i + 1);
   }
 
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
@@ -135,8 +130,7 @@ export default function CapturasPorJugadorPage() {
     const dx = endX - touchStartX;
     setTouchStartX(null);
     if (Math.abs(dx) < 40) return;
-    if (dx > 0) prev();
-    else next();
+    dx > 0 ? prev() : next();
   }
 
   const leftIndex = users.length ? mod(activeIndex - 1, users.length) : 0;
@@ -153,32 +147,11 @@ export default function CapturasPorJugadorPage() {
 
   return (
     <div style={{ width: "100%", maxWidth: 980, margin: "0 auto", padding: "0 16px" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ minWidth: 240 }}>
-          <h1 style={{ marginBottom: 6 }}>Capturas</h1>
-          <p style={{ marginTop: 0, maxWidth: 560 }}>
-            Selecciona un jugador para ver sus capturas. Para añadir/editar las tuyas:{" "}
-            <a href="/mi-panel">Mi panel</a>.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-          <button onClick={prev} disabled={users.length === 0}>
-            ◀
-          </button>
-          <button onClick={next} disabled={users.length === 0}>
-            ▶
-          </button>
-        </div>
-      </div>
+      <h1>Capturas</h1>
+      <p>
+        Selecciona un jugador para ver sus capturas. Para añadir/editar las tuyas:{" "}
+        <a href="/mi-panel">Mi panel</a>.
+      </p>
 
       {msg && <p>{msg}</p>}
 
@@ -186,6 +159,7 @@ export default function CapturasPorJugadorPage() {
         <p>No hay jugadores aún.</p>
       ) : (
         <>
+          {/* ===== SLIDER DE JUGADORES ===== */}
           <div
             onTouchStart={onTouchStart}
             onTouchEnd={onTouchEnd}
@@ -254,6 +228,7 @@ export default function CapturasPorJugadorPage() {
             </div>
           </div>
 
+          {/* ===== FILTROS ===== */}
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h2 style={{ margin: 0 }}>{activeUserName}</h2>
@@ -267,7 +242,6 @@ export default function CapturasPorJugadorPage() {
                 display: "grid",
                 gridTemplateColumns: isDesktop ? "repeat(4, max-content)" : "repeat(2, 1fr)",
                 gap: 10,
-                justifyContent: isDesktop ? "start" : "stretch",
               }}
             >
               <button style={pillStyle(statusFilter === "all")} onClick={() => setStatusFilter("all")}>
@@ -279,12 +253,16 @@ export default function CapturasPorJugadorPage() {
               <button style={pillStyle(statusFilter === "muerto")} onClick={() => setStatusFilter("muerto")}>
                 Muerto
               </button>
-              <button style={pillStyle(statusFilter === "no_capturado")} onClick={() => setStatusFilter("no_capturado")}>
+              <button
+                style={pillStyle(statusFilter === "no_capturado")}
+                onClick={() => setStatusFilter("no_capturado")}
+              >
                 No capturado
               </button>
             </div>
           </div>
 
+          {/* ===== LISTADO ===== */}
           <div
             style={{
               marginTop: 12,
@@ -312,36 +290,29 @@ export default function CapturasPorJugadorPage() {
                       justifyContent: "space-between",
                       alignItems: isMobile ? "stretch" : "center",
                       gap: 12,
-                      minWidth: 0,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                       <PokemonSprite name={c.pokemon} size={44} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 900, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 900, fontSize: 18 }}>
                           {c.nickname?.trim() ? c.nickname : "—"}
                         </div>
-                        <div style={{ color: "#666", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {c.route || "sin ruta"}
-                        </div>
+                        <div style={{ color: "#666", fontSize: 13 }}>{c.route || "sin ruta"}</div>
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: isMobile ? "flex-start" : "flex-end" }}>
-                      <span
-                        style={{
-                          ...chip,
-                          padding: "6px 12px",
-                          borderRadius: 999,
-                          fontWeight: 900,
-                          fontSize: 13,
-                          flexShrink: 0,
-                          maxWidth: "100%",
-                        }}
-                      >
-                        {statusLabel(c.status)}
-                      </span>
-                    </div>
+                    <span
+                      style={{
+                        ...chip,
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        fontWeight: 900,
+                        fontSize: 13,
+                      }}
+                    >
+                      {statusLabel(c.status)}
+                    </span>
                   </div>
                 );
               })
@@ -367,31 +338,41 @@ function UserCard({
   isDesktop: boolean;
 }) {
   const isCenter = variant === "center";
-  const scale = isCenter ? 1 : 0.86;
-  const opacity = isCenter ? 1 : 0.45;
 
   return (
     <div
       onClick={onClick}
       style={{
-        width: isCenter ? (isDesktop ? 340 : "100%") : 280,
-        maxWidth: isCenter ? (isDesktop ? 340 : 520) : 280,
-        minHeight: 92,
-        transform: `scale(${scale})`,
-        opacity,
-        transition: "transform 220ms ease, opacity 220ms ease",
-        cursor: isCenter ? "default" : "pointer",
+        width: isDesktop ? (isCenter ? 340 : 280) : "100%",
+        maxWidth: isDesktop ? (isCenter ? 340 : 280) : 520,
+        minHeight: 96,
         borderRadius: 16,
         border: "1px solid #ddd",
         background: "white",
         padding: 16,
-        boxShadow: isCenter ? "0 14px 36px rgba(0,0,0,0.12)" : "none",
         textAlign: "center",
         boxSizing: "border-box",
+        opacity: isCenter ? 1 : 0.45,
+        cursor: isCenter ? "default" : "pointer",
       }}
     >
-      <div style={{ fontSize: isCenter ? 22 : 16, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis" }}>
-        {user.display_name}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+        <img
+          src={avatarSrcFromKey(user.avatar_key)}
+          alt="avatar"
+          width={isDesktop ? 52 : 44}
+          height={isDesktop ? 52 : 44}
+          style={{
+            imageRendering: "pixelated",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "#fff",
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ fontSize: isCenter ? 22 : 16, fontWeight: 900, whiteSpace: "nowrap" }}>
+          {user.display_name}
+        </div>
       </div>
       <div style={{ color: "#666", fontSize: 13, marginTop: 6 }}>{count} capturas</div>
     </div>

@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { avatarSrcFromKey } from "@/lib/avatars";
 
 type Profile = {
   id: string;
   display_name: string;
+  avatar_key?: string | null;
 };
 
 type ProgressRow = {
@@ -17,6 +19,7 @@ type ProgressRow = {
 type Row = {
   user_id: string;
   display_name: string;
+  avatar_key?: string | null;
   badges: number;
   updated_at: string | null;
 };
@@ -84,7 +87,7 @@ export default function HistoriaPage() {
   async function load() {
     setMsg("");
 
-    const p = await sb.from("profiles").select("id, display_name");
+    const p = await sb.from("profiles").select("id, display_name, avatar_key");
     const pr = await sb.from("progress").select("user_id, badges, updated_at");
 
     if (p.error) return setMsg(p.error.message);
@@ -108,6 +111,7 @@ export default function HistoriaPage() {
       return {
         user_id: p.id,
         display_name: p.display_name || `Jugador ${p.id.slice(0, 6)}`,
+        avatar_key: p.avatar_key ?? null,
         badges: clampBadges(pr?.badges ?? 0),
         updated_at: pr?.updated_at ?? null,
       };
@@ -159,9 +163,26 @@ export default function HistoriaPage() {
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 900, fontSize: 18 }}>
-                      #{idx + 1} — {r.display_name} {crown}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <img
+                        src={avatarSrcFromKey(r.avatar_key)}
+                        alt="avatar"
+                        width={28}
+                        height={28}
+                        style={{
+                          imageRendering: "pixelated",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          background: "#fff",
+                          flexShrink: 0,
+                        }}
+                      />
+
+                      <div style={{ fontWeight: 900, fontSize: 18 }}>
+                        #{idx + 1} — {r.display_name} {crown}
+                      </div>
                     </div>
+
                     <div style={{ color: "#666", fontWeight: 800 }}>
                       {r.badges} {r.badges === 1 ? "medalla" : "medallas"}
                     </div>

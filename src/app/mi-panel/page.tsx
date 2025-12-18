@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
+import { AVATARS, avatarSrcFromKey } from "@/lib/avatars";
 
 type CaptureStatus = "vivo" | "muerto" | "no_capturado";
 
@@ -30,6 +31,7 @@ type Profile = {
   id: string;
   display_name: string;
   role?: "player" | "admin";
+  avatar_key?: string | null;
 };
 
 function clampBadges(n: any) {
@@ -80,6 +82,8 @@ export default function MiPanelPage() {
       padding: 14,
     } as const;
   }
+
+  const [avatarKey, setAvatarKey] = useState<string>("pikachu");
 
   const [msg, setMsg] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -212,8 +216,14 @@ export default function MiPanelPage() {
       return;
     }
 
-    const p = await sb.from("profiles").select("id, display_name, role").eq("id", uid).maybeSingle();
-    if (!p.error && p.data) setProfile(p.data as Profile);
+    const p = await sb.from("profiles").select("id, display_name, role, avatar_key").eq("id", uid).maybeSingle();
+
+    if (!p.error && p.data) {
+  const prof = p.data as Profile;
+  setProfile(prof);
+  setAvatarKey(prof.avatar_key ?? "pikachu");
+}
+
     else setProfile(null);
 
     const caps = await sb.from("captures").select("*").eq("user_id", uid).order("captured_at", { ascending: false });
@@ -261,6 +271,24 @@ export default function MiPanelPage() {
     setActiveGameId(nextGameId);
     setMsg("Región/juego activo actualizado ✅");
   }
+
+async function saveAvatar(nextKey: string) {
+  setMsg("");
+  if (!userId) return;
+
+  setBusy(true);
+  const up = await sb
+    .from("profiles")
+    .update({ avatar_key: nextKey })
+    .eq("id", userId);
+  setBusy(false);
+
+  if (up.error) return setMsg(up.error.message);
+
+  setAvatarKey(nextKey);
+  setMsg("Avatar actualizado ✅");
+}
+
 
   async function addCapture() {
     setMsg("");
@@ -451,6 +479,78 @@ async function removeFromTeamIfNotAlive(pokemonName: string) {
           {msg}
         </div>
       )}
+
+{/* ================== MI AVATAR ================== */}
+<div style={{ marginTop: 18, ...cardStyle() }}>
+  <h2 style={{ marginTop: 0 }}>Mi avatar</h2>
+  <p style={{ marginTop: 0, color: "#666" }}>
+    Elige tu Pokémon como avatar.
+  </p>
+
+  {/* Avatar actual */}
+  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+    <img
+      src={avatarSrcFromKey(avatarKey)}
+      alt="Avatar"
+      width={56}
+      height={56}
+      style={{
+        imageRendering: "pixelated",
+        borderRadius: 12,
+        border: "1px solid #ddd",
+        background: "#fff",
+      }}
+    />
+    <div>
+      <div style={{ fontWeight: 800 }}>
+        {profile?.display_name ?? "Jugador"}
+      </div>
+      <div style={{ fontSize: 13, color: "#777" }}>
+        Avatar: {avatarKey}
+      </div>
+    </div>
+  </div>
+
+  {/* Selector */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(64px, 64px))",
+      gap: 10,
+    }}
+  >
+    {AVATARS.map((a) => {
+      const selected = a.key === avatarKey;
+      return (
+        <button
+          key={a.key}
+          onClick={() => saveAvatar(a.key)}
+          disabled={busy}
+          title={a.label}
+          style={{
+            all: "unset",
+            cursor: busy ? "not-allowed" : "pointer",
+            border: selected ? "2px solid #111" : "1px solid #ddd",
+            borderRadius: 12,
+            padding: 6,
+            background: "#fff",
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <img
+            src={a.src}
+            alt={a.label}
+            width={44}
+            height={44}
+            style={{ imageRendering: "pixelated" }}
+          />
+        </button>
+      );
+    })}
+  </div>
+</div>
+
 
       {/* ================== ADMIN: REGIÓN/JUEGO ACTIVO ================== */}
       <div style={{ marginTop: 18, ...cardStyle() }}>

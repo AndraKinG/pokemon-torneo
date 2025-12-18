@@ -1,79 +1,128 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const sb = useMemo(() => supabaseBrowser(), []);
+  const sb = supabaseBrowser();
   const router = useRouter();
+
+  const [mode, setMode] = useState<"login" | "register">("login");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErrMsg(null);
-    setLoading(true);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
-    try {
-      console.log("LOGIN: antes signIn");
+  async function login() {
+    setMsg("");
+    setBusy(true);
 
-      const res = await Promise.race([
-        sb.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout (10s): la request no respondió")), 10000)
-        ),
-      ]);
+    const { error } = await sb.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      console.log("LOGIN: después signIn", res);
+    setBusy(false);
 
-      if (res.error) {
-        setErrMsg(res.error.message);
-        return;
-      }
+    if (error) return setMsg(error.message);
 
-      router.push("/mi-panel");
-      router.refresh();
-    } catch (err: any) {
-      console.error("LOGIN ERROR", err);
-      setErrMsg(err?.message ?? "Error desconocido");
-    } finally {
-      setLoading(false);
-    }
+    router.push("/mi-panel");
   }
 
-  return (
-    <div style={{ maxWidth: 420 }}>
-      <h1>Login</h1>
+  async function register() {
+  setMsg("");
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+  const username = displayName.trim();
+  if (!username) return setMsg("El nombre de usuario es obligatorio.");
+
+  setBusy(true);
+  try {
+    const { data, error } = await sb.auth.signUp({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) return setMsg(error.message);
+
+    const user = data.user;
+    if (!user) return setMsg("No se pudo crear el usuario.");
+
+    // Ahora que hay sesión, RLS permite esto
+    const { error: profileErr } = await sb.from("profiles").upsert(
+      {
+        id: user.id,
+        display_name: username,
+        role: "player",
+      },
+      { onConflict: "id" }
+    );
+
+    if (profileErr) return setMsg(profileErr.message);
+
+    router.push("/mi-panel");
+    router.refresh();
+  } catch (e: any) {
+    setMsg(e?.message ?? "Error desconocido");
+  } finally {
+    setBusy(false);
+  }
+}
+
+  return (
+    <div style={{ maxWidth: 420, margin: "40px auto", padding: "0 16px" }}>
+      <h1>{mode === "login" ? "Login" : "Registro"}</h1>
+
+      <div style={{ display: "grid", gap: 12 }}>
+        {mode === "register" && (
+          <input
+            placeholder="Nombre de usuario"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            disabled={busy}
+          />
+        )}
+
         <input
+          type="email"
+          placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          autoComplete="email"
+          disabled={busy}
         />
 
         <input
+          type="password"
+          placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Contraseña"
-          type="password"
-          autoComplete="current-password"
+          disabled={busy}
         />
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
+        {msg && <div style={{ color: "crimson" }}>{msg}</div>}
 
-        {errMsg && <p style={{ color: "crimson" }}>{errMsg}</p>}
-      </form>
+        {mode === "login" ? (
+          <button onClick={login} disabled={busy}>
+            Entrar
+          </button>
+        ) : (
+          <button onClick={register} disabled={busy}>
+            Crear cuenta
+          </button>
+        )}
+
+        <button
+          onClick={() => setMode(mode === "login" ? "register" : "login")}
+          style={{ background: "transparent", border: "none", color: "#555" }}
+        >
+          {mode === "login"
+            ? "¿No tienes cuenta? Regístrate"
+            : "¿Ya tienes cuenta? Login"}
+        </button>
+      </div>
     </div>
   );
 }
