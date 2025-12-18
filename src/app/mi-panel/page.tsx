@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import PokemonSprite from "@/components/PokemonSprite";
 import { AVATARS, avatarSrcFromKey } from "@/lib/avatars";
@@ -33,6 +33,13 @@ type Profile = {
   role?: "player" | "admin";
   avatar_key?: string | null;
 };
+
+function withTimeout<T>(p: Promise<T>, ms: number) {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
 
 function clampBadges(n: any) {
   const x = Number(n);
@@ -161,9 +168,7 @@ export default function MiPanelPage() {
 
   const aliveCaptures = useMemo(() => captures.filter((c) => c.status === "vivo"), [captures]);
 
-  const alivePokemonSet = useMemo(() => {
-    return new Set(aliveCaptures.map((c) => c.pokemon.trim().toLowerCase()));
-  }, [aliveCaptures]);
+  const alivePokemonSet = useMemo(() => new Set(aliveCaptures.map((c) => c.pokemon.trim().toLowerCase())), [aliveCaptures]);
 
   const nicknameByPokemon = useMemo(() => {
     const m = new Map<string, string>();
@@ -178,20 +183,38 @@ export default function MiPanelPage() {
   }
 
   async function loadRunData() {
-    const run = await sb.from("runs").select("active_game_id").eq("id", 1).single();
-    if (!run.error) setActiveGameId((run.data?.active_game_id as number | null) ?? null);
+    // ⛑️ timeout en queries base
+    const run = await withTimeout(sb.from("runs").select("active_game_id").eq("id", 1).single(), 6000).catch(() => null);
+    if (run && !(run as any).error) setActiveGameId(((run as any).data?.active_game_id as number | null) ?? null);
 
-    const g = await sb.from("games").select("id, name").order("name");
-    if (!g.error) setGames((g.data ?? []) as any);
+    const g = await withTimeout(sb.from("games").select("id, name").order("name"), 6000).catch(() => null);
+    if (g && !(g as any).error) setGames((((g as any).data ?? []) as any) ?? []);
 
-    const r = await sb.from("routes").select("id, game_id, name, name_es");
-    if (!r.error) setRoutes((r.data ?? []) as any);
+    const r = await withTimeout(sb.from("routes").select("id, game_id, name, name_es"), 6000).catch(() => null);
+    if (r && !(r as any).error) setRoutes((((r as any).data ?? []) as any) ?? []);
   }
 
+  const loadingRef = useRef(false);
+
   async function loadAll() {
+    if (loadingRef.current) return; // evita solapes
+    loadingRef.current = true;
+
     setMsg("");
 
-    const { data: auth, error: authErr } = await sb.auth.getUser();
+    // ✅ getUser con timeout (evita quedarse pillado al recargar)
+    let authData: any = null;
+    let authErr: any = null;
+
+    try {
+      const res = await withTimeout(sb.auth.getUser(), 6000);
+      authData = (res as any).data;
+      authErr = (res as any).error;
+    } catch {
+      authData = { user: null };
+      authErr = new Error("timeout");
+    }
+
     if (authErr) {
       setUserId(null);
       setProfile(null);
@@ -199,10 +222,11 @@ export default function MiPanelPage() {
       setTeamSlots([]);
       setMyBadges(0);
       setMyProgressUpdatedAt(null);
+      loadingRef.current = false;
       return;
     }
 
-    const uid = auth?.user?.id ?? null;
+    const uid = authData?.user?.id ?? null;
     setUserId(uid);
 
     await loadRunData();
@@ -213,27 +237,39 @@ export default function MiPanelPage() {
       setTeamSlots([]);
       setMyBadges(0);
       setMyProgressUpdatedAt(null);
+      loadingRef.current = false;
       return;
     }
 
-    const p = await sb.from("profiles").select("id, display_name, role, avatar_key").eq("id", uid).maybeSingle();
+    // Perfil
+    const p = await withTimeout(
+      sb.from("profiles").select("id, display_name, role, avatar_key").eq("id", uid).maybeSingle(),
+      6000
+    ).catch(() => null);
 
-    if (!p.error && p.data) {
-  const prof = p.data as Profile;
-  setProfile(prof);
-  setAvatarKey(prof.avatar_key ?? "pikachu");
-}
+    if (p && !(p as any).error && (p as any).data) {
+      const prof = (p as any).data as Profile;
+      setProfile(prof);
+      setAvatarKey(prof.avatar_key ?? "pikachu");
+    } else {
+      setProfile(null);
+    }
 
-    else setProfile(null);
+    // Capturas
+    const caps = await withTimeout(
+      sb.from("captures").select("*").eq("user_id", uid).order("captured_at", { ascending: false }),
+      6000
+    ).catch(() => null);
 
-    const caps = await sb.from("captures").select("*").eq("user_id", uid).order("captured_at", { ascending: false });
-    if (caps.error) setMsg(caps.error.message);
-    else setCaptures((caps.data ?? []) as Capture[]);
+    if (caps && (caps as any).error) setMsg((caps as any).error.message);
+    else setCaptures((((caps as any)?.data ?? []) as Capture[]) ?? []);
 
-    const team = await sb.from("team_slots").select("*").eq("user_id", uid).order("slot");
-    if (team.error) setMsg(team.error.message);
+    // Equipo
+    const team = await withTimeout(sb.from("team_slots").select("*").eq("user_id", uid).order("slot"), 6000).catch(() => null);
+
+    if (team && (team as any).error) setMsg((team as any).error.message);
     else {
-      const rows = (team.data ?? []) as TeamSlot[];
+      const rows = (((team as any)?.data ?? []) as TeamSlot[]) ?? [];
       setTeamSlots(rows);
 
       const next: Record<number, string> = { 1: "", 2: "", 3: "", 4: "", 5: "", 6: "" };
@@ -241,17 +277,39 @@ export default function MiPanelPage() {
       setTeamInput(next);
     }
 
-    const pr = await sb.from("progress").select("user_id, badges, updated_at").eq("user_id", uid).maybeSingle();
-    if (!pr.error) {
-      setMyBadges(clampBadges(pr.data?.badges ?? 0));
-      setMyProgressUpdatedAt(pr.data?.updated_at ?? null);
+    // Progreso
+    const pr = await withTimeout(
+      sb.from("progress").select("user_id, badges, updated_at").eq("user_id", uid).maybeSingle(),
+      6000
+    ).catch(() => null);
+
+    if (pr && !(pr as any).error) {
+      setMyBadges(clampBadges((pr as any).data?.badges ?? 0));
+      setMyProgressUpdatedAt((pr as any).data?.updated_at ?? null);
     }
+
+    loadingRef.current = false;
   }
 
   useEffect(() => {
     loadAll();
+
     const { data: sub } = sb.auth.onAuthStateChange(() => loadAll());
-    return () => sub.subscription.unsubscribe();
+
+    // 🔁 reintenta al volver a la pestaña/ventana
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadAll();
+    };
+    const onFocus = () => loadAll();
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      sub.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -260,35 +318,33 @@ export default function MiPanelPage() {
     if (profile?.role !== "admin") return;
 
     setBusy(true);
-    const up = await sb
-      .from("runs")
-      .update({ active_game_id: nextGameId, updated_at: new Date().toISOString() })
-      .eq("id", 1);
+    const up = await withTimeout(
+      sb.from("runs").update({ active_game_id: nextGameId, updated_at: new Date().toISOString() }).eq("id", 1),
+      6000
+    ).catch(() => null);
     setBusy(false);
 
-    if (up.error) return setMsg(up.error.message);
+    if (!up) return setMsg("Timeout actualizando run.");
+    if ((up as any).error) return setMsg((up as any).error.message);
 
     setActiveGameId(nextGameId);
     setMsg("Región/juego activo actualizado ✅");
   }
 
-async function saveAvatar(nextKey: string) {
-  setMsg("");
-  if (!userId) return;
+  async function saveAvatar(nextKey: string) {
+    setMsg("");
+    if (!userId) return;
 
-  setBusy(true);
-  const up = await sb
-    .from("profiles")
-    .update({ avatar_key: nextKey })
-    .eq("id", userId);
-  setBusy(false);
+    setBusy(true);
+    const up = await withTimeout(sb.from("profiles").update({ avatar_key: nextKey }).eq("id", userId), 6000).catch(() => null);
+    setBusy(false);
 
-  if (up.error) return setMsg(up.error.message);
+    if (!up) return setMsg("Timeout actualizando avatar.");
+    if ((up as any).error) return setMsg((up as any).error.message);
 
-  setAvatarKey(nextKey);
-  setMsg("Avatar actualizado ✅");
-}
-
+    setAvatarKey(nextKey);
+    setMsg("Avatar actualizado ✅");
+  }
 
   async function addCapture() {
     setMsg("");
@@ -305,22 +361,26 @@ async function saveAvatar(nextKey: string) {
     if (!p || !n || !s) return setMsg("Pokémon, Mote y Estado son obligatorios.");
 
     setBusy(true);
-    const ins = await sb
-      .from("captures")
-      .insert({
-        user_id: userId,
-        pokemon: p,
-        nickname: n,
-        status: s,
-        game_id: activeGameId,
-        route_id: routeId,
-        route: rName,
-      })
-      .select("*")
-      .single();
+    const ins = await withTimeout(
+      sb
+        .from("captures")
+        .insert({
+          user_id: userId,
+          pokemon: p,
+          nickname: n,
+          status: s,
+          game_id: activeGameId,
+          route_id: routeId,
+          route: rName,
+        })
+        .select("*")
+        .single(),
+      6000
+    ).catch(() => null);
     setBusy(false);
 
-    if (ins.error) return setMsg(ins.error.message);
+    if (!ins) return setMsg("Timeout insertando captura.");
+    if ((ins as any).error) return setMsg((ins as any).error.message);
 
     setPokemon("");
     setNickname("");
@@ -329,58 +389,58 @@ async function saveAvatar(nextKey: string) {
     await loadAll();
   }
 
-  async function deleteCapture(id: number) {
-  setMsg("");
-  if (!userId) return;
+  async function removeFromTeamIfNotAlive(pokemonName: string) {
+    if (!userId) return;
+    const p = pokemonName.trim();
+    if (!p) return;
 
-  const cap = captures.find((c) => c.id === id);
+    setBusy(true);
+    const del = await withTimeout(sb.from("team_slots").delete().eq("user_id", userId).eq("pokemon", p), 6000).catch(() => null);
+    setBusy(false);
 
-  setBusy(true);
-  const del = await sb.from("captures").delete().eq("id", id);
-  setBusy(false);
-
-  if (del.error) return setMsg(del.error.message);
-
-  if (cap?.pokemon) {
-    await removeFromTeamIfNotAlive(cap.pokemon);
+    if (!del) return setMsg("Timeout borrando del equipo.");
+    if ((del as any).error) setMsg((del as any).error.message);
   }
 
-  await loadAll();
-}
+  async function deleteCapture(id: number) {
+    setMsg("");
+    if (!userId) return;
 
+    const cap = captures.find((c) => c.id === id);
 
-async function removeFromTeamIfNotAlive(pokemonName: string) {
-  if (!userId) return;
-  const p = pokemonName.trim();
-  if (!p) return;
+    setBusy(true);
+    const del = await withTimeout(sb.from("captures").delete().eq("id", id), 6000).catch(() => null);
+    setBusy(false);
 
-  setBusy(true);
-  const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("pokemon", p);
-  setBusy(false);
+    if (!del) return setMsg("Timeout borrando captura.");
+    if ((del as any).error) return setMsg((del as any).error.message);
 
-  if (del.error) setMsg(del.error.message);
-}
+    if (cap?.pokemon) {
+      await removeFromTeamIfNotAlive(cap.pokemon);
+    }
 
+    await loadAll();
+  }
 
   async function updateCaptureStatus(id: number, newStatus: CaptureStatus) {
-  setMsg("");
-  if (!userId) return;
+    setMsg("");
+    if (!userId) return;
 
-  const cap = captures.find((c) => c.id === id);
+    const cap = captures.find((c) => c.id === id);
 
-  setBusy(true);
-  const up = await sb.from("captures").update({ status: newStatus }).eq("id", id);
-  setBusy(false);
+    setBusy(true);
+    const up = await withTimeout(sb.from("captures").update({ status: newStatus }).eq("id", id), 6000).catch(() => null);
+    setBusy(false);
 
-  if (up.error) return setMsg(up.error.message);
+    if (!up) return setMsg("Timeout actualizando estado.");
+    if ((up as any).error) return setMsg((up as any).error.message);
 
-  if (cap && newStatus !== "vivo") {
-    await removeFromTeamIfNotAlive(cap.pokemon);
+    if (cap && newStatus !== "vivo") {
+      await removeFromTeamIfNotAlive(cap.pokemon);
+    }
+
+    await loadAll();
   }
-
-  await loadAll();
-}
-
 
   async function saveBadges(nextBadges: number) {
     setMsg("");
@@ -389,17 +449,21 @@ async function removeFromTeamIfNotAlive(pokemonName: string) {
     const b = clampBadges(nextBadges);
 
     setBusy(true);
-    const up = await sb
-      .from("progress")
-      .upsert({ user_id: userId, badges: b, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
-      .select("badges, updated_at")
-      .single();
+    const up = await withTimeout(
+      sb
+        .from("progress")
+        .upsert({ user_id: userId, badges: b, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+        .select("badges, updated_at")
+        .single(),
+      6000
+    ).catch(() => null);
     setBusy(false);
 
-    if (up.error) return setMsg(up.error.message);
+    if (!up) return setMsg("Timeout guardando medallas.");
+    if ((up as any).error) return setMsg((up as any).error.message);
 
-    setMyBadges(clampBadges(up.data.badges));
-    setMyProgressUpdatedAt(up.data.updated_at ?? null);
+    setMyBadges(clampBadges((up as any).data.badges));
+    setMyProgressUpdatedAt((up as any).data.updated_at ?? null);
     setMsg("Medallas actualizadas ✅");
   }
 
@@ -422,12 +486,15 @@ async function removeFromTeamIfNotAlive(pokemonName: string) {
     const nick = nicknameByPokemon.get(key) ?? null;
 
     setBusy(true);
-    const up = await sb
-      .from("team_slots")
-      .upsert({ user_id: userId, slot, pokemon: p, nickname: nick }, { onConflict: "user_id,slot" });
+    const up = await withTimeout(
+      sb.from("team_slots").upsert({ user_id: userId, slot, pokemon: p, nickname: nick }, { onConflict: "user_id,slot" }),
+      6000
+    ).catch(() => null);
     setBusy(false);
 
-    if (up.error) return setMsg(up.error.message);
+    if (!up) return setMsg("Timeout guardando slot.");
+    if ((up as any).error) return setMsg((up as any).error.message);
+
     await loadAll();
   }
 
@@ -436,10 +503,12 @@ async function removeFromTeamIfNotAlive(pokemonName: string) {
     if (!userId) return;
 
     setBusy(true);
-    const del = await sb.from("team_slots").delete().eq("user_id", userId).eq("slot", slot);
+    const del = await withTimeout(sb.from("team_slots").delete().eq("user_id", userId).eq("slot", slot), 6000).catch(() => null);
     setBusy(false);
 
-    if (del.error) return setMsg(del.error.message);
+    if (!del) return setMsg("Timeout vaciando slot.");
+    if ((del as any).error) return setMsg((del as any).error.message);
+
     await loadAll();
   }
 
@@ -480,77 +549,62 @@ async function removeFromTeamIfNotAlive(pokemonName: string) {
         </div>
       )}
 
-{/* ================== MI AVATAR ================== */}
-<div style={{ marginTop: 18, ...cardStyle() }}>
-  <h2 style={{ marginTop: 0 }}>Mi avatar</h2>
-  <p style={{ marginTop: 0, color: "#666" }}>
-    Elige tu Pokémon como avatar.
-  </p>
+      {/* ================== MI AVATAR ================== */}
+      <div style={{ marginTop: 18, ...cardStyle() }}>
+        <h2 style={{ marginTop: 0 }}>Mi avatar</h2>
+        <p style={{ marginTop: 0, color: "#666" }}>Elige tu Pokémon como avatar.</p>
 
-  {/* Avatar actual */}
-  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-    <img
-      src={avatarSrcFromKey(avatarKey)}
-      alt="Avatar"
-      width={56}
-      height={56}
-      style={{
-        imageRendering: "pixelated",
-        borderRadius: 12,
-        border: "1px solid #ddd",
-        background: "#fff",
-      }}
-    />
-    <div>
-      <div style={{ fontWeight: 800 }}>
-        {profile?.display_name ?? "Jugador"}
-      </div>
-      <div style={{ fontSize: 13, color: "#777" }}>
-        Avatar: {avatarKey}
-      </div>
-    </div>
-  </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <img
+            src={avatarSrcFromKey(avatarKey)}
+            alt="Avatar"
+            width={56}
+            height={56}
+            style={{
+              imageRendering: "pixelated",
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              background: "#fff",
+            }}
+          />
+          <div>
+            <div style={{ fontWeight: 800 }}>{profile?.display_name ?? "Jugador"}</div>
+            <div style={{ fontSize: 13, color: "#777" }}>Avatar: {avatarKey}</div>
+          </div>
+        </div>
 
-  {/* Selector */}
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(64px, 64px))",
-      gap: 10,
-    }}
-  >
-    {AVATARS.map((a) => {
-      const selected = a.key === avatarKey;
-      return (
-        <button
-          key={a.key}
-          onClick={() => saveAvatar(a.key)}
-          disabled={busy}
-          title={a.label}
+        <div
           style={{
-            all: "unset",
-            cursor: busy ? "not-allowed" : "pointer",
-            border: selected ? "2px solid #111" : "1px solid #ddd",
-            borderRadius: 12,
-            padding: 6,
-            background: "#fff",
             display: "grid",
-            placeItems: "center",
+            gridTemplateColumns: "repeat(auto-fit, minmax(64px, 64px))",
+            gap: 10,
           }}
         >
-          <img
-            src={a.src}
-            alt={a.label}
-            width={44}
-            height={44}
-            style={{ imageRendering: "pixelated" }}
-          />
-        </button>
-      );
-    })}
-  </div>
-</div>
-
+          {AVATARS.map((a) => {
+            const selected = a.key === avatarKey;
+            return (
+              <button
+                key={a.key}
+                onClick={() => saveAvatar(a.key)}
+                disabled={busy}
+                title={a.label}
+                style={{
+                  all: "unset",
+                  cursor: busy ? "not-allowed" : "pointer",
+                  border: selected ? "2px solid #111" : "1px solid #ddd",
+                  borderRadius: 12,
+                  padding: 6,
+                  background: "#fff",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <img src={a.src} alt={a.label} width={44} height={44} style={{ imageRendering: "pixelated" }} />
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ================== ADMIN: REGIÓN/JUEGO ACTIVO ================== */}
       <div style={{ marginTop: 18, ...cardStyle() }}>

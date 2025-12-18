@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+
+function withTimeout<T>(p: Promise<T>, ms: number) {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
 
 export default function NavBar() {
   const sb = useMemo(() => supabaseBrowser(), []);
@@ -12,14 +19,15 @@ export default function NavBar() {
   const [name, setName] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
-  async function refreshOnce() {
-    if (running.current) return; // evita doble llamada
+  const refreshOnce = useCallback(async () => {
+    if (running.current) return;
     running.current = true;
 
     setLoading(true);
     try {
-      // Mejor que getSession para UI: devuelve rápido o error claro
-      const { data, error } = await sb.auth.getUser();
+      // ⛑️ timeout para evitar "..." infinito
+      const { data, error } = await withTimeout(sb.auth.getUser(), 6000);
+
       if (error) {
         setUid(null);
         setName("");
@@ -34,24 +42,42 @@ export default function NavBar() {
         return;
       }
 
-      const { data: profile } = await sb
-        .from("profiles")
-        .select("display_name")
-        .eq("id", userId)
-        .maybeSingle();
+      const { data: profile } = await withTimeout(
+        sb.from("profiles").select("display_name").eq("id", userId).maybeSingle(),
+        6000
+      );
 
       setName(profile?.display_name ?? "Mi cuenta");
+    } catch {
+      // ⛑️ si se cuelga, salimos de loading
+      setUid(null);
+      setName("");
     } finally {
       setLoading(false);
       running.current = false;
     }
-  }
+  }, [sb]);
 
   useEffect(() => {
     refreshOnce();
+
     const { data: sub } = sb.auth.onAuthStateChange(() => refreshOnce());
-    return () => sub.subscription.unsubscribe();
-  }, [sb]);
+
+    // 🔁 reintenta al volver a la pestaña/ventana
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshOnce();
+    };
+    const onFocus = () => refreshOnce();
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      sub.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [sb, refreshOnce]);
 
   return (
     <nav style={{ display: "flex", gap: 16, padding: 12, borderBottom: "1px solid #ddd", alignItems: "center" }}>
